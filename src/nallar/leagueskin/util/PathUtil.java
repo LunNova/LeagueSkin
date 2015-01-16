@@ -6,7 +6,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-public class RiotUtil {
+public class PathUtil {
+    public static Path dataDir() {
+        return Paths.get("./test/").normalize();
+    }
+
+    public static Path configDir() {
+        return dataDir().resolve("config");
+    }
+
+    public static Path backupDir() {
+        return dataDir().resolve("backups");
+    }
+
     public static Path leagueDirectory() {
         return Paths.get("C:/Riot Games/League of Legends");
     }

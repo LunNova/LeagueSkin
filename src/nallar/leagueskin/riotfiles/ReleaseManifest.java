@@ -1,6 +1,6 @@
 package nallar.leagueskin.riotfiles;
 
-import nallar.leagueskin.util.RiotUtil;
+import nallar.leagueskin.util.PathUtil;
 import nallar.leagueskin.util.Throw;
 
 import java.io.IOException;
@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 public class ReleaseManifest {
-    public static final ReleaseManifest INSTANCE = new ReleaseManifest(RiotUtil.releaseDirectory().resolve("releasemanifest"));
+    public static final ReleaseManifest INSTANCE = new ReleaseManifest(PathUtil.releaseDirectory().resolve("releasemanifest"));
     private static final int EXPECTED_MAX_SIZE = 1024 * 1024 * 75; // 100MB
     private final Path location;
     private final String name;
@@ -49,7 +49,6 @@ public class ReleaseManifest {
         this.buffer = b;
         parse();
         sanityCheck();
-        throw null;
     }
 
     private static void debug(String s) {
@@ -64,9 +63,6 @@ public class ReleaseManifest {
 
     public void setSize(Raf.RAFEntry entry) {
         String fullName = entry.name;
-        if (!fullName.startsWith("/")) {
-            fullName = '/' + fullName;
-        }
         int compressedSize = entry.size;
         FileEntry fileEntry = fileEntryMap.get(fullName);
         if (fileEntry == null) {
@@ -79,8 +75,8 @@ public class ReleaseManifest {
     }
 
     public void setSize(String fullName, int compressedSize, int uncompressedSize) {
-        if (fullName.startsWith("DATA/")) {
-            fullName = '/' + fullName;
+        if (!fullName.startsWith("/")) {
+            throw new RuntimeException("Must use full name, not relative. Got " + fullName);
         }
         FileEntry fileEntry = fileEntryMap.get(fullName);
         if (fileEntry == null) {

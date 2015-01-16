@@ -1,14 +1,13 @@
 package nallar.leagueskin.riotfiles;
 
-import nallar.leagueskin.models.Obj;
-import nallar.leagueskin.models.Skn;
+import nallar.leagueskin.Backups;
+import nallar.leagueskin.ReplacementGenerator;
 import nallar.leagueskin.util.Throw;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
-import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -34,7 +33,6 @@ public class Raf {
     private final MappedByteBuffer buffer;
     private List<RAFEntry> rafEntryList = new ArrayList<>();
     private Set<String> fileNames = new HashSet<>();
-    private Set<String> shortFileNames = new HashSet<>();
 
     public Raf(Path location) {
         this.location = location;
@@ -133,8 +131,8 @@ public class Raf {
         rafEntryList.forEach(ReleaseManifest.INSTANCE::setSize);
     }
 
-    public void update(Map<String, Object> replacements) {
-        if (Collections.disjoint(shortFileNames, replacements.keySet())) {
+    public void update(Map<String, ReplacementGenerator> replacements) {
+        if (Collections.disjoint(fileNames, replacements.keySet())) {
             return;
         }
         //dump();
@@ -171,7 +169,7 @@ public class Raf {
                 int expectedSize = entry.size;
                 int offset = (int) created.getFilePointer();
                 int decompressedSize = 0;
-                Object replacement = replacements.get(entry.getShortName().toLowerCase());
+                ReplacementGenerator replacement = replacements.get(entry.name);
                 if (old.getFilePointer() != entry.offset) {
                     debug("FP should already be at correct offset in old data. Should be " + entry.offset + ", got " + old.getFilePointer());
                     old.seek(entry.offset);
@@ -182,31 +180,13 @@ public class Raf {
                     // Copy old
                     created.write(oldData);
                 } else {
+                    Backups.INSTANCE.setRawBytes(entry.name, oldData);
                     boolean compressed = false;
                     if (entry.size >= 2) {
                         int magic = ((oldData[0] & 0xff) << 8) | (oldData[1] & 0xff);
                         compressed = (magic == 0x7801 || magic == 0x789c);
                     }
-                    //debug("Replacing " + entry.getShortName() + " with " + replacement + ", compressed = " + compressed);
-                    // Write new
-                    byte[] replacementData;
-                    if (replacement instanceof Path) {
-                        replacementData = Files.readAllBytes((Path) replacement);
-                    } else if (replacement instanceof Obj) {
-                        byte[] decompressed = decompress(oldData);
-                        Skn skn = new Skn(entry.name, ByteBuffer.wrap(decompressed));
-                        Obj replacementObj = (Obj) replacement;
-                        if (replacementObj.getVertexes().length != skn.getVertexes().length) {
-                            debug("Mismatched vertex counts replacing " + entry);
-                            replacementData = decompressed;
-                        } else {
-                            skn.setVertexes(replacementObj.getVertexes());
-                            skn.setIndices(replacementObj.getIndices());
-                            replacementData = skn.update();
-                        }
-                    } else {
-                        throw new RuntimeException("Unexpected type for replacement " + replacement.getClass());
-                    }
+                    byte[] replacementData = replacement.generateReplacement(compressed ? decompress(oldData) : oldData);
                     decompressedSize = replacementData.length;
                     if (compressed) {
                         replacementData = compress(replacementData);
@@ -214,12 +194,10 @@ public class Raf {
                     expectedSize = replacementData.length;
                     entry.expectedRawBytes = replacementData;
                     created.write(replacementData);
-                    //debug("Wrote file " + entry.name + ". Old size: " + entry.size + ", old offset: " + entry.offset);
                 }
                 entry.offset = offset;
                 entry.size = (int) created.getFilePointer() - offset;
                 if (replacement != null) {
-                    //debug("New size: " + entry.size + ", new offset: " + entry.offset);
                     ReleaseManifest.INSTANCE.setSize(entry.name, entry.size, decompressedSize);
                 }
                 if (entry.size != expectedSize) {
@@ -228,10 +206,21 @@ public class Raf {
                 }
             }
         } catch (IOException e) {
-            try {
-                Files.move(rafDatBak, rafDat);
-            } catch (IOException e1) {
-                throw Throw.sneaky(e1);
+            if (Files.exists(rafDatBak)) {
+                if (Files.exists(rafDat)) {
+                    try {
+                        Files.delete(rafDat);
+                    } catch (IOException e1) {
+                        e.printStackTrace();
+                        throw Throw.sneaky(e1);
+                    }
+                }
+                try {
+                    Files.move(rafDatBak, rafDat);
+                } catch (IOException e1) {
+                    e.printStackTrace();
+                    throw Throw.sneaky(e1);
+                }
             }
             throw new RuntimeException("Failed to open RAF.dat file " + rafDatBak, e);
         }
@@ -322,14 +311,13 @@ public class Raf {
             buffer.get(bytes);
             String name;
             try {
-                name = new String(bytes, "UTF-8");
+                name = '/' + new String(bytes, "UTF-8");
             } catch (UnsupportedEncodingException e) {
                 throw Throw.sneaky(e);
             }
             for (RAFEntry rafEntry : rafEntryList) {
                 if (rafEntry.stringTableIndex == i) {
-                    rafEntry.name = name;
-                    shortFileNames.add(rafEntry.getShortName().toLowerCase());
+                    rafEntry.name = name; // For consistency with ReleaseManifest names
                     break;
                 }
             }
@@ -360,8 +348,8 @@ public class Raf {
     }
 
     public class RAFEntry {
-        int rafOffset;
         public String name;
+        int rafOffset;
         int offset;
         int size;
         int stringTableIndex;

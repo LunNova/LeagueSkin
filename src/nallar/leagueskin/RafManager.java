@@ -1,5 +1,6 @@
 package nallar.leagueskin;
 
+import com.google.common.collect.ArrayListMultimap;
 import nallar.leagueskin.models.Obj;
 import nallar.leagueskin.models.Skn;
 import nallar.leagueskin.riotfiles.Raf;
@@ -34,17 +35,21 @@ public class RafManager {
     }
 
     private final List<Raf> rafList = new ArrayList<>();
+    private final ArrayListMultimap<String, String> shortNamesToLong = ArrayListMultimap.create();
 
     public RafManager(Path directory) {
         recursiveSearch(directory, 0);
 
-        SkinPack sknRep = new SkinPack(Paths.get("./test/Skins"), ".skn");
-        System.out.println(sknRep.replacements);
+        for (Raf raf : rafList) {
+            for (Raf.RAFEntry entry : raf.getEntries()) {
+                shortNamesToLong.put(entry.getShortName().toLowerCase(), entry.name);
+            }
+        }
+
         rafList.forEach((raf) -> {
-            raf.update(sknRep.replacements);
             raf.fixManifest();
         });
-        List<String> generatedExtract = new ArrayList<>(sknRep.replacements.keySet());
+        List<String> generatedExtract = new ArrayList<>(); // TODO: fix, broken after refactoring
 
         rafList.forEach((raf) -> {
             for (Raf.RAFEntry entry : raf.getEntries()) {
@@ -78,8 +83,8 @@ public class RafManager {
             }
         });
 
-        SkinPack testSkinPack = new SkinPack(Paths.get("./test/Skins/"));
-        System.out.println(testSkinPack.replacements);
+        SkinPack testSkinPack = new SkinPack(Paths.get("./test/Skins/"), this);
+        System.out.println(testSkinPack.replacements.keySet());
         rafList.forEach((raf) -> raf.update(testSkinPack.replacements));
 
         //rafList.forEach(nallar.leagueskin.riotfiles.RAF::dump);
@@ -114,6 +119,56 @@ public class RafManager {
                 }
             }
         });
+    }
+
+    public List<String> getFullNames(String shortName, Path realPath) {
+        int index = shortName.lastIndexOf('.');
+        if (index == -1) {
+            throw new RuntimeException("Should have filetype");
+        }
+        index = shortName.lastIndexOf('.', index - 1);
+        String match = null;
+        if (index != -1) {
+            match = shortName.substring(0, index);
+            shortName = shortName.substring(index + 1);
+        }
+        if (realPath.toString().contains("$$")) {
+            if (match != null) {
+                throw new RuntimeException("Can't use match " + match + " and $$ notation.");
+            }
+            String matchPart = realPath.toString().replace('\\', '/');
+            int indexDollar = matchPart.indexOf("$$");
+            match = matchPart.substring(indexDollar + 2, matchPart.indexOf('/', indexDollar));
+        }
+        // TODO: Refactor to return list of names, have * select all instead of requiring single match
+        List<String> names = shortNamesToLong.get(shortName);
+        if (names.size() > 1) {
+            if (match == null) {
+                throw new RuntimeException("Multiple possible full names for " + shortName + "(path: " + realPath + "), please specify the full name.  Got " + names);
+            }
+            if (!match.isEmpty()) {
+                boolean immediateEnding = !match.endsWith("$");
+                if (!immediateEnding) {
+                    match = match.substring(0, match.length() - 1);
+                }
+                match = match.replace('.', '/').toLowerCase() + (immediateEnding ? '/' + shortName : "");
+                List<String> newNames = new ArrayList<>();
+                for (String name : names) {
+                    if (name.toLowerCase().contains(match)) {
+                        newNames.add(name);
+                    }
+                }
+                names = newNames;
+            }
+        }
+
+        if (names.size() == 0) {
+            System.out.println("File " + shortName + " (match: " + match + ", path: " + realPath + ") does not exist in RAFs. Names in RAFs: " + shortNamesToLong.size());
+            if (match != null) {
+                throw new RuntimeException("File " + shortName + " (match: " + match + ", path: " + realPath + ") does not exist in RAFs. Names in RAFs: " + shortNamesToLong.size());
+            }
+        }
+        return names;
     }
 
     private void recursiveSearch(Path path, int depth) {
