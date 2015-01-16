@@ -1,5 +1,8 @@
 package nallar.leagueskin;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ArrayListMultimap;
 import nallar.leagueskin.models.Obj;
 import nallar.leagueskin.models.Skn;
@@ -36,6 +39,12 @@ public class RafManager {
 
     private final List<Raf> rafList = new ArrayList<>();
     private final ArrayListMultimap<String, String> shortNamesToLong = ArrayListMultimap.create();
+    private final LoadingCache<String, ReplacementGeneratorWrapper> replacements = CacheBuilder.newBuilder().build(new CacheLoader<String, ReplacementGeneratorWrapper>() {
+        @Override
+        public ReplacementGeneratorWrapper load(String key) throws Exception {
+            return new ReplacementGeneratorWrapper();
+        }
+    });
 
     public RafManager(Path directory) {
         recursiveSearch(directory, 0);
@@ -46,9 +55,7 @@ public class RafManager {
             }
         }
 
-        rafList.forEach((raf) -> {
-            raf.fixManifest();
-        });
+        rafList.forEach(Raf::fixManifest);
         List<String> generatedExtract = new ArrayList<>(); // TODO: fix, broken after refactoring
 
         rafList.forEach((raf) -> {
@@ -84,8 +91,8 @@ public class RafManager {
         });
 
         SkinPack testSkinPack = new SkinPack(Paths.get("./test/Skins/"), this);
-        System.out.println(testSkinPack.replacements.keySet());
-        rafList.forEach((raf) -> raf.update(testSkinPack.replacements));
+        System.out.println(replacements.asMap().toString());
+        rafList.forEach((raf) -> raf.update(replacements.asMap()));
 
         //rafList.forEach(nallar.leagueskin.riotfiles.RAF::dump);
         rafList.forEach((raf) -> {
@@ -186,5 +193,9 @@ public class RafManager {
         } catch (IOException e) {
             throw Throw.sneaky(e);
         }
+    }
+
+    public void addReplacement(String fullName, ReplacementGenerator replacementGenerator, boolean discardsPrevious) {
+        replacements.getUnchecked(fullName).addGenerator(replacementGenerator, discardsPrevious);
     }
 }

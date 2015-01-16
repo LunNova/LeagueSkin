@@ -1,7 +1,7 @@
 package nallar.leagueskin.riotfiles;
 
 import nallar.leagueskin.Backups;
-import nallar.leagueskin.ReplacementGenerator;
+import nallar.leagueskin.ReplacementGeneratorWrapper;
 import nallar.leagueskin.util.Throw;
 
 import java.io.ByteArrayOutputStream;
@@ -131,18 +131,14 @@ public class Raf {
         rafEntryList.forEach(ReleaseManifest.INSTANCE::setSize);
     }
 
-    public void update(Map<String, ReplacementGenerator> replacements) {
+    public void update(Map<String, ReplacementGeneratorWrapper> replacements) {
         if (Collections.disjoint(fileNames, replacements.keySet())) {
             return;
         }
         //dump();
         //debug("In common for " + this);
         List<RAFEntry> sortedRafList = new ArrayList<>(rafEntryList);
-        Collections.sort(sortedRafList, new Comparator<RAFEntry>() {
-            public int compare(RAFEntry s1, RAFEntry s2) {
-                return Integer.compareUnsigned(s1.offset, s2.offset);
-            }
-        });
+        Collections.sort(sortedRafList, (s1, s2) -> Integer.compareUnsigned(s1.offset, s2.offset));
 
         // Rename .raf.dat to .raf.dat.bak
         // Open for reading, memory mapped.
@@ -169,7 +165,7 @@ public class Raf {
                 int expectedSize = entry.size;
                 int offset = (int) created.getFilePointer();
                 int decompressedSize = 0;
-                ReplacementGenerator replacement = replacements.get(entry.name);
+                ReplacementGeneratorWrapper replacement = replacements.get(entry.name);
                 if (old.getFilePointer() != entry.offset) {
                     debug("FP should already be at correct offset in old data. Should be " + entry.offset + ", got " + old.getFilePointer());
                     old.seek(entry.offset);
@@ -186,7 +182,7 @@ public class Raf {
                         int magic = ((oldData[0] & 0xff) << 8) | (oldData[1] & 0xff);
                         compressed = (magic == 0x7801 || magic == 0x789c);
                     }
-                    byte[] replacementData = replacement.generateReplacement(compressed ? decompress(oldData) : oldData);
+                    byte[] replacementData = replacement.apply(compressed ? decompress(oldData) : oldData);
                     decompressedSize = replacementData.length;
                     if (compressed) {
                         replacementData = compress(replacementData);

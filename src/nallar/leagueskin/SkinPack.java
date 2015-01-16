@@ -9,11 +9,9 @@ import java.nio.ByteBuffer;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.List;
 
 public class SkinPack {
-    private static final Set<String> claimed = new HashSet<>();
-    public final Map<String, ReplacementGenerator> replacements = new HashMap<>();
     final String match;
     private final RafManager manager;
 
@@ -24,25 +22,27 @@ public class SkinPack {
     public SkinPack(Path folder, RafManager manager, String match) {
         this.match = match;
         this.manager = manager;
-        recursiveSearch(folder, replacements);
+        recursiveSearch(folder);
     }
 
     private static String shortNameFromPath(Path p) {
         return p.getFileName().toString().toLowerCase().replace("\\", "/");
     }
 
-    private void recursiveSearch(Path path, Map<String, ReplacementGenerator> replacements) {
+    private void recursiveSearch(Path path) {
         path = path.toAbsolutePath();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
             for (Path entry : stream) {
                 String forwardSlashName = entry.toString().replace('\\', '/');
                 String name = shortNameFromPath(entry);
                 if (Files.isDirectory(entry)) {
-                    recursiveSearch(entry, replacements);
+                    recursiveSearch(entry);
                 } else if (!name.startsWith("!") && !forwardSlashName.contains("/!")) {
-                    if ((match == null || name.contains(match)) && claimed.add(name)) {
+                    if (match == null || name.contains(match)) {
+                        boolean discardsPrevious = true;
                         ReplacementGenerator replacementGenerator = previous -> Files.readAllBytes(entry);
                         if (name.endsWith(".obj")) {
+                            discardsPrevious = false;
                             name = name.replace(".obj", ".skn");
                             Obj replacement = new Obj();
                             replacement.load(entry);
@@ -61,10 +61,11 @@ public class SkinPack {
                         try {
                             List<String> names = manager.getFullNames(name, entry);
                             for (String fullName : names) {
-                                // TODO: Chaining?
-                                replacements.put(fullName, replacementGenerator);
+                                manager.addReplacement(fullName, replacementGenerator, discardsPrevious);
                             }
-                        } catch (Exception e) {e.printStackTrace();}
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
                     }
                 }
             }
