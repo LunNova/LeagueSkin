@@ -9,19 +9,20 @@ import java.nio.ByteBuffer;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 public class SkinPack {
     final String match;
-    private final RafManager manager;
 
-    public SkinPack(Path folder, RafManager manager) {
-        this(folder, manager, null);
+    private List<Replacement> replacements = new ArrayList<>();
+
+    public SkinPack(Path folder) {
+        this(folder, null);
     }
 
-    public SkinPack(Path folder, RafManager manager, String match) {
+    public SkinPack(Path folder, String match) {
         this.match = match;
-        this.manager = manager;
         recursiveSearch(folder);
     }
 
@@ -58,19 +59,30 @@ public class SkinPack {
                                 return skn.update();
                             };
                         }
-                        try {
-                            List<String> names = manager.getFullNames(name, entry);
-                            for (String fullName : names) {
-                                manager.addReplacement(fullName, replacementGenerator, discardsPrevious);
-                            }
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
+                        replacements.add(new Replacement(name, replacementGenerator, discardsPrevious, path));
                     }
                 }
             }
         } catch (IOException e) {
             throw Throw.sneaky(e);
+        }
+    }
+
+    public List<Replacement> getReplacements() {
+        return replacements;
+    }
+
+    public static class Replacement {
+        public final String name;
+        public final ReplacementGenerator generator;
+        public final boolean discardsPrevious;
+        public final Path path;
+
+        public Replacement(String name, ReplacementGenerator generator, boolean discardsPrevious, Path path) {
+            this.name = name;
+            this.generator = generator;
+            this.discardsPrevious = discardsPrevious;
+            this.path = path;
         }
     }
 }

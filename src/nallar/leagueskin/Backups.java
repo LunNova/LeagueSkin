@@ -77,4 +77,13 @@ public class Backups {
             throw Throw.sneaky(e);
         }
     }
+
+    public ReplacementGenerator getReplacementGenerator(String path) {
+        if (!backupNames.contains(path)) {
+            throw new RuntimeException("No backup for " + path);
+        }
+        return (bytes) -> {
+            return getRawBytes(path);
+        };
+    }
 }

@@ -4,13 +4,10 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ArrayListMultimap;
-import nallar.leagueskin.models.Obj;
-import nallar.leagueskin.models.Skn;
 import nallar.leagueskin.riotfiles.Raf;
 import nallar.leagueskin.util.Throw;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,32 +16,36 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class RafManager {
-    private static final List<String> testSKN = new ArrayList<>();
-
-    static {
-        //testSKN.add(".skn");
-    }
-
-    private static final List<String> extractObj = new ArrayList<>();
-
-    static {
-        //extractObj.add(".skn");
-    }
-
-    private static final List<String> testExtract = new ArrayList<>();
-
-    static {
-        //testExtract.add(".ini");
-    }
+//    private static final List<String> testSKN = new ArrayList<>();
+//
+//    static {
+//        //testSKN.add(".skn");
+//    }
+//
+//    private static final List<String> extractObj = new ArrayList<>();
+//
+//    static {
+//        //extractObj.add(".skn");
+//    }
+//
+//    private static final List<String> testExtract = new ArrayList<>();
+//
+//    static {
+//        //testExtract.add(".ini");
+//    }
 
     private final List<Raf> rafList = new ArrayList<>();
     private final ArrayListMultimap<String, String> shortNamesToLong = ArrayListMultimap.create();
-    private final LoadingCache<String, ReplacementGeneratorWrapper> replacements = CacheBuilder.newBuilder().build(new CacheLoader<String, ReplacementGeneratorWrapper>() {
-        @Override
-        public ReplacementGeneratorWrapper load(String key) throws Exception {
-            return new ReplacementGeneratorWrapper();
-        }
-    });
+    private final FileStatusManager fileStatusManager = new FileStatusManager();
+
+    private LoadingCache<String, ReplacementGeneratorWrapper> newReplacementsCache() {
+        return CacheBuilder.newBuilder().build(new CacheLoader<String, ReplacementGeneratorWrapper>() {
+            @Override
+            public ReplacementGeneratorWrapper load(String key) throws Exception {
+                return new ReplacementGeneratorWrapper();
+            }
+        });
+    }
 
     public RafManager(Path directory) {
         recursiveSearch(directory, 0);
@@ -56,76 +57,95 @@ public class RafManager {
         }
 
         rafList.forEach(Raf::fixManifest);
-        List<String> generatedExtract = new ArrayList<>(); // TODO: fix, broken after refactoring
 
-        rafList.forEach((raf) -> {
-            for (Raf.RAFEntry entry : raf.getEntries()) {
-                boolean extract = false;
-                for (String test : generatedExtract) {
-                    if (entry.name.toLowerCase().endsWith(test)) {
-                        extract = true;
-                    }
-                }
-                if (false && extract) {
-                    Skn made = new Skn(entry.name, ByteBuffer.wrap(entry.getBytes()));
-                    Obj obj = new Obj();
-                    obj.setIndices(made.getIndices());
-                    obj.setVertexes(made.getVertexes());
-                    obj.save(Paths.get("./test/generated/" + entry.getShortName() + ".obj"));
-                }
+        SkinPack testSkinPack = new SkinPack(Paths.get("./test/Skins/"));
 
-                extract = false;
-                for (String test : testExtract) {
-                    if (entry.name.toLowerCase().endsWith(test)) {
-                        extract = true;
-                    }
+        LoadingCache<String, ReplacementGeneratorWrapper> replacements = newReplacementsCache();
+        testSkinPack.getReplacements().forEach(replacement -> {
+            try {
+                String name = replacement.name;
+                List<String> names = getFullNames(name, replacement.path);
+                for (String fullName : names) {
+                    replacements.getUnchecked(fullName).addGenerator(replacement.generator, replacement.discardsPrevious, replacement.path);
                 }
-                if (extract) {
-                    try {
-                        Files.write(Paths.get("./test/extract/" + entry.getShortName()), entry.getBytes());
-                    } catch (Exception e) {
-                        throw new RuntimeException("Error extracting " + entry.getShortName(), e);
-                    }
-                }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         });
 
-        SkinPack testSkinPack = new SkinPack(Paths.get("./test/Skins/"), this);
         System.out.println(replacements.asMap().toString());
+
+        LoadingCache<String, ReplacementGeneratorWrapper> efficientReplacements = newReplacementsCache();
+        fileStatusManager.findChangedStatus(replacements, efficientReplacements);
+
         rafList.forEach((raf) -> raf.update(replacements.asMap()));
 
-        //rafList.forEach(nallar.leagueskin.riotfiles.RAF::dump);
-        rafList.forEach((raf) -> {
-            for (Raf.RAFEntry entry : raf.getEntries()) {
-                boolean makeSkn = false;
-                for (String test : testSKN) {
-                    if (entry.name.toLowerCase().endsWith(test)) {
-                        makeSkn = true;
-                    }
-                }
-                if (makeSkn) {
-                    Skn made;
-                    try {
-                        made = new Skn(entry.name, ByteBuffer.wrap(entry.getBytes()));
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        continue;
-                    }
-                    boolean objSkin = false;
-                    for (String test : extractObj) {
-                        if (entry.name.toLowerCase().endsWith(test)) {
-                            objSkin = true;
-                        }
-                    }
-                    if (objSkin) {
-                        Obj obj = new Obj();
-                        obj.setIndices(made.getIndices());
-                        obj.setVertexes(made.getVertexes());
-                        obj.save(Paths.get("./test/skinify/" + entry.getShortName() + ".obj"));
-                    }
-                }
-            }
-        });
+//        List<String> generatedExtract = new ArrayList<>(); // TODO: fix, broken after refactoring
+//
+//        rafList.forEach((raf) -> {
+//            for (Raf.RAFEntry entry : raf.getEntries()) {
+//                boolean extract = false;
+//                for (String test : generatedExtract) {
+//                    if (entry.name.toLowerCase().endsWith(test)) {
+//                        extract = true;
+//                    }
+//                }
+//                if (false && extract) {
+//                    Skn made = new Skn(entry.name, ByteBuffer.wrap(entry.getBytes()));
+//                    Obj obj = new Obj();
+//                    obj.setIndices(made.getIndices());
+//                    obj.setVertexes(made.getVertexes());
+//                    obj.save(Paths.get("./test/generated/" + entry.getShortName() + ".obj"));
+//                }
+//
+//                extract = false;
+//                for (String test : testExtract) {
+//                    if (entry.name.toLowerCase().endsWith(test)) {
+//                        extract = true;
+//                    }
+//                }
+//                if (extract) {
+//                    try {
+//                        Files.write(Paths.get("./test/extract/" + entry.getShortName()), entry.getBytes());
+//                    } catch (Exception e) {
+//                        throw new RuntimeException("Error extracting " + entry.getShortName(), e);
+//                    }
+//                }
+//            }
+//        });
+//
+//        //rafList.forEach(nallar.leagueskin.riotfiles.RAF::dump);
+//        rafList.forEach((raf) -> {
+//            for (Raf.RAFEntry entry : raf.getEntries()) {
+//                boolean makeSkn = false;
+//                for (String test : testSKN) {
+//                    if (entry.name.toLowerCase().endsWith(test)) {
+//                        makeSkn = true;
+//                    }
+//                }
+//                if (makeSkn) {
+//                    Skn made;
+//                    try {
+//                        made = new Skn(entry.name, ByteBuffer.wrap(entry.getBytes()));
+//                    } catch (Exception e) {
+//                        e.printStackTrace();
+//                        continue;
+//                    }
+//                    boolean objSkin = false;
+//                    for (String test : extractObj) {
+//                        if (entry.name.toLowerCase().endsWith(test)) {
+//                            objSkin = true;
+//                        }
+//                    }
+//                    if (objSkin) {
+//                        Obj obj = new Obj();
+//                        obj.setIndices(made.getIndices());
+//                        obj.setVertexes(made.getVertexes());
+//                        obj.save(Paths.get("./test/skinify/" + entry.getShortName() + ".obj"));
+//                    }
+//                }
+//            }
+//        });
     }
 
     public List<String> getFullNames(String shortName, Path realPath) {
@@ -193,9 +213,5 @@ public class RafManager {
         } catch (IOException e) {
             throw Throw.sneaky(e);
         }
-    }
-
-    public void addReplacement(String fullName, ReplacementGenerator replacementGenerator, boolean discardsPrevious) {
-        replacements.getUnchecked(fullName).addGenerator(replacementGenerator, discardsPrevious);
     }
 }
