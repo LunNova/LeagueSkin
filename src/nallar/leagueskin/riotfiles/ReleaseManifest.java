@@ -1,5 +1,6 @@
 package nallar.leagueskin.riotfiles;
 
+import nallar.leagueskin.Log;
 import nallar.leagueskin.util.PathUtil;
 import nallar.leagueskin.util.Throw;
 
@@ -51,10 +52,6 @@ public class ReleaseManifest {
         sanityCheck();
     }
 
-    private static void debug(String s) {
-        System.out.println(s);
-    }
-
     public void sanityCheck() {
         for (FileEntry fileEntry : fileEntries) {
             fileEntry.sanityCheck();
@@ -92,13 +89,13 @@ public class ReleaseManifest {
 
         int magic = buffer.getInt();
         if (magic != 0x4D534C52) {
-            debug("Wrong magic, got 0x" + Integer.toHexString(magic) + ", expected 0x4D534C52");
+            Log.error("Wrong magic, got 0x" + Integer.toHexString(magic) + ", expected 0x4D534C52");
             return;
         }
 
         int fileType = buffer.getInt(); // Another "magic" value... not really sure what this does
         if (fileType != 0x00010001) {
-            debug("Wrong fileType, got 0x" + Integer.toHexString(fileType) + ", expected 0x00010001");
+            Log.error("Wrong fileType, got 0x" + Integer.toHexString(fileType) + ", expected 0x00010001");
             return;
         }
 
@@ -109,11 +106,11 @@ public class ReleaseManifest {
 
         final int dirHeaderPos = 16;
         if (buffer.position() != dirHeaderPos) {
-            debug("Unexpected dirHeaderPos, expected 16 got " + buffer.position());
+            Log.warn("Unexpected dirHeaderPos, expected 16 got " + buffer.position());
         }
 
         int directoryCount = buffer.getInt();
-        debug("Directories: " + directoryCount);
+        Log.trace("Directories: " + directoryCount);
         //checkCount -= directoryCount;
 
         dirEntries = new DirEntry[directoryCount];
@@ -123,7 +120,7 @@ public class ReleaseManifest {
 
         final int fileHeaderPos = dirHeaderPos + 4 + (directoryCount * 20);
         if (buffer.position() != fileHeaderPos) {
-            debug("Unexpected fileHeaderPos, expected 16 got " + buffer.position());
+            Log.warn("Unexpected fileHeaderPos, expected 16 got " + buffer.position());
         }
         int fileCount = buffer.getInt();
         checkCount -= fileCount;
@@ -139,7 +136,7 @@ public class ReleaseManifest {
 
         final int stringHeaderPos = fileHeaderPos + 4 + (fileCount * 44);
         if (buffer.position() != stringHeaderPos) {
-            debug("Unexpected fileHeaderPos, expected 16 got " + buffer.position());
+            Log.warn("Unexpected fileHeaderPos, expected 16 got " + buffer.position());
         }
         int stringCount = buffer.getInt();
         buffer.getInt(); //Unknown int.
@@ -212,6 +209,14 @@ public class ReleaseManifest {
             e.printStackTrace();
         }
         return currentEntry;
+    }
+
+    public List<String> getFileNames() {
+        List<String> names = new ArrayList<>();
+        for (FileEntry fileEntry : fileEntries) {
+            names.add(fileEntry.getPath());
+        }
+        return names;
     }
 
     public static class DirEntry {
@@ -315,7 +320,7 @@ public class ReleaseManifest {
                 throw new RuntimeException("No name in " + toString());
             }
             if (parentFolder == null) {
-                debug("No parent folder in " + toString()); // Expected? Some .luaobjs aren't in any folders. Why?
+                Log.warn("No parent folder in " + toString()); // Expected? Some .luaobjs aren't in any folders. Why?
             }
             if (offset < 1000) {
                 throw new RuntimeException("Unexpected offset - too low in " + toString());

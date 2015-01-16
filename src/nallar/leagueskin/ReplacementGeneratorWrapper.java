@@ -1,5 +1,7 @@
 package nallar.leagueskin;
 
+import nallar.leagueskin.util.FriendlyException;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -11,16 +13,16 @@ public class ReplacementGeneratorWrapper {
     private List<Path> paths = new ArrayList<>();
 
     public void addGenerator(ReplacementGenerator generator, boolean discardsPrevious, Path path) {
+        paths.add(path);
         if (discardsPrevious) {
             if (this.discardsPrevious) {
-                throw new RuntimeException("Already discarding previous, can't add " + generator + " in " + this);
+                throw new FriendlyException("Two sources for the same file which discard previous data in " + this);
             }
             this.discardsPrevious = true;
             replacementGenerators.add(0, generator);
         } else {
             replacementGenerators.add(generator);
         }
-        paths.add(path);
     }
 
     public List<Path> getPaths() {
@@ -32,5 +34,9 @@ public class ReplacementGeneratorWrapper {
             previous = generator.generateReplacement(previous);
         }
         return previous;
+    }
+
+    public String toString() {
+        return paths.toString();
     }
 }

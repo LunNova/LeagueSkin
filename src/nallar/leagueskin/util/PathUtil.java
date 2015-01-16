@@ -8,7 +8,7 @@ import java.nio.file.Paths;
 
 public class PathUtil {
     public static Path dataDir() {
-        return Paths.get("./test/").normalize();
+        return Paths.get("test/");
     }
 
     public static Path configDir() {

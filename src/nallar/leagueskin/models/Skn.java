@@ -1,5 +1,6 @@
 package nallar.leagueskin.models;
 
+import nallar.leagueskin.Log;
 import nallar.leagueskin.util.Throw;
 
 import java.io.IOException;
@@ -44,10 +45,6 @@ public class Skn implements TriModel, VertexModel {
         sanityCheck();
     }
 
-    private static void debug(String s) {
-        System.out.println(s);
-    }
-
     private void sanityCheck() {
         for (float[] vertex : vertexes) {
             for (float part : vertex) {
@@ -64,7 +61,7 @@ public class Skn implements TriModel, VertexModel {
         buffer.position(0);
 
         if (buffer.remaining() < 4) {
-            debug("Not loading invalid SKN: empty!");
+            Log.error("Not loading invalid SKN: empty!");
             return;
         }
 

@@ -7,11 +7,14 @@ import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public class Backups {
     public static final Backups INSTANCE = new Backups();
+    private List<Path> deletions = new ArrayList<Path>();
 
     // Backup names, as the full name of the file in the backup. EG, /Data/BananaBanana/Soraka.skn
     final Set<String> backupNames = new HashSet<>();
@@ -26,38 +29,51 @@ public class Backups {
         recursiveSearch(location);
     }
 
-    public byte[] getRawBytes(String path) {
+    private static String fixPath(String path) {
+        path = path.replace('\\', '/');
+        if (path.startsWith("/")) {
+            return path.substring(1);
+        }
+        return path;
+    }
+
+    private Path pathFromString(String path) {
+        return location.resolve(fixPath(path));
+    }
+
+    public byte[] getBytes(String path) {
+        path = fixPath(path);
         if (!backupNames.contains(path)) {
             throw new RuntimeException("No backup for " + path);
         }
         try {
-            return Files.readAllBytes(location.resolve(path));
+            return Files.readAllBytes(pathFromString(path));
         } catch (IOException e) {
             throw Throw.sneaky(e);
         }
     }
 
-    public void setRawBytes(String path, byte[] rawBytes) {
+    public void setBytes(String path, byte[] bytes) {
+        path = fixPath(path);
         if (!backupNames.add(path)) {
             System.out.println("Not backing up " + path + ", already saved");
             return;
         }
-        if (path.startsWith("/")) {
-            path = path.substring(1);
-        }
         try {
-            Path target = location.resolve(path);
+            Path target = pathFromString(path);
             Files.createDirectories(target.getParent());
-            Files.write(target, rawBytes);
+            Files.write(target, bytes);
         } catch (IOException e) {
             throw Throw.sneaky(e);
         }
     }
 
     public void delete(String path) {
+        path = fixPath(path);
         if (!backupNames.remove(path)) {
             throw new RuntimeException("No backup for " + path);
         }
+        deletions.add(pathFromString(path));
     }
 
     private void recursiveSearch(Path path) {
@@ -67,10 +83,7 @@ public class Backups {
                     recursiveSearch(entry);
                     continue;
                 }
-                String rafPath = location.relativize(path).toString();
-                if (!rafPath.startsWith("/")) {
-                    rafPath = '/' + rafPath;
-                }
+                String rafPath = fixPath(location.relativize(entry).toString());
                 backupNames.add(rafPath);
             }
         } catch (IOException e) {
@@ -78,12 +91,29 @@ public class Backups {
         }
     }
 
-    public ReplacementGenerator getReplacementGenerator(String path) {
+    public ReplacementGenerator getReplacementGenerator(String path_) {
+        String path = fixPath(path_);
         if (!backupNames.contains(path)) {
             throw new RuntimeException("No backup for " + path);
         }
-        return (bytes) -> {
-            return getRawBytes(path);
+        return bytes -> {
+            bytes = getBytes(path);
+            delete(path);
+            return bytes;
         };
+    }
+
+    public void finish() {
+        for (Path p : deletions) {
+            if (!Files.exists(p)) {
+                throw new RuntimeException(p + " should exist to delete");
+            }
+            try {
+                Files.delete(p);
+            } catch (IOException e) {
+                throw Throw.sneaky(e);
+            }
+        }
+        deletions.clear();
     }
 }

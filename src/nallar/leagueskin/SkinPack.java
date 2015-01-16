@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,9 +32,11 @@ public class SkinPack {
     }
 
     private void recursiveSearch(Path path) {
+        Path workingDir = Paths.get("").toAbsolutePath();
         path = path.toAbsolutePath();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
-            for (Path entry : stream) {
+            for (Path entryFull : stream) {
+                Path entry = workingDir.relativize(entryFull);
                 String forwardSlashName = entry.toString().replace('\\', '/');
                 String name = shortNameFromPath(entry);
                 if (Files.isDirectory(entry)) {
@@ -59,7 +62,7 @@ public class SkinPack {
                                 return skn.update();
                             };
                         }
-                        replacements.add(new Replacement(name, replacementGenerator, discardsPrevious, path));
+                        replacements.add(new Replacement(name, replacementGenerator, discardsPrevious, entry));
                     }
                 }
             }
@@ -83,6 +86,16 @@ public class SkinPack {
             this.generator = generator;
             this.discardsPrevious = discardsPrevious;
             this.path = path;
+        }
+
+        @Override
+        public String toString() {
+            return "Replacement{" +
+                    "name='" + name + '\'' +
+                    ", generator=" + generator +
+                    ", discardsPrevious=" + discardsPrevious +
+                    ", path=" + path +
+                    '}';
         }
     }
 }

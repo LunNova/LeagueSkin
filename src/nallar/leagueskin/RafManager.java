@@ -5,13 +5,13 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ArrayListMultimap;
 import nallar.leagueskin.riotfiles.Raf;
+import nallar.leagueskin.riotfiles.ReleaseManifest;
 import nallar.leagueskin.util.Throw;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,7 +38,7 @@ public class RafManager {
     private final ArrayListMultimap<String, String> shortNamesToLong = ArrayListMultimap.create();
     private final FileStatusManager fileStatusManager = new FileStatusManager();
 
-    private LoadingCache<String, ReplacementGeneratorWrapper> newReplacementsCache() {
+    private static LoadingCache<String, ReplacementGeneratorWrapper> newReplacementsCache() {
         return CacheBuilder.newBuilder().build(new CacheLoader<String, ReplacementGeneratorWrapper>() {
             @Override
             public ReplacementGeneratorWrapper load(String key) throws Exception {
@@ -57,28 +57,28 @@ public class RafManager {
         }
 
         rafList.forEach(Raf::fixManifest);
+        ReleaseManifest.INSTANCE.sanityCheck();
+    }
 
-        SkinPack testSkinPack = new SkinPack(Paths.get("./test/Skins/"));
-
+    public void installSkinPack(SkinPack skinPack) {
         LoadingCache<String, ReplacementGeneratorWrapper> replacements = newReplacementsCache();
-        testSkinPack.getReplacements().forEach(replacement -> {
-            try {
-                String name = replacement.name;
-                List<String> names = getFullNames(name, replacement.path);
-                for (String fullName : names) {
-                    replacements.getUnchecked(fullName).addGenerator(replacement.generator, replacement.discardsPrevious, replacement.path);
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
+        skinPack.getReplacements().forEach(replacement -> {
+            String name = replacement.name;
+            List<String> names = getFullNames(name, replacement.path);
+            for (String fullName : names) {
+                replacements.getUnchecked(fullName).addGenerator(replacement.generator, replacement.discardsPrevious, replacement.path);
             }
         });
-
-        System.out.println(replacements.asMap().toString());
 
         LoadingCache<String, ReplacementGeneratorWrapper> efficientReplacements = newReplacementsCache();
         fileStatusManager.findChangedStatus(replacements, efficientReplacements);
 
-        rafList.forEach((raf) -> raf.update(replacements.asMap()));
+        System.out.println(efficientReplacements.asMap().toString());
+
+        rafList.forEach((raf) -> raf.update(efficientReplacements.asMap()));
+
+        fileStatusManager.saveStatus();
+        Backups.INSTANCE.finish();
 
 //        List<String> generatedExtract = new ArrayList<>(); // TODO: fix, broken after refactoring
 //

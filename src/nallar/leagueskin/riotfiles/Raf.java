@@ -1,6 +1,7 @@
 package nallar.leagueskin.riotfiles;
 
 import nallar.leagueskin.Backups;
+import nallar.leagueskin.Log;
 import nallar.leagueskin.ReplacementGeneratorWrapper;
 import nallar.leagueskin.util.Throw;
 
@@ -49,10 +50,6 @@ public class Raf {
         parse();
     }
 
-    private static void debug(String s) {
-        System.out.println(s);
-    }
-
     private static String humanReadableByteCount(long bytes, boolean si) {
         int unit = si ? 1000 : 1024;
         if (bytes < unit) return bytes + " B";
@@ -90,8 +87,8 @@ public class Raf {
             try {
                 n = inflater.inflate(inflateBuffer);
                 if (n == 0) {
-                    debug("Needs input: " + inflater.needsInput());
-                    debug("Needs dictionary: " + inflater.needsInput());
+                    Log.warn("Needs input: " + inflater.needsInput());
+                    Log.warn("Needs dictionary: " + inflater.needsInput());
                     throw new RuntimeException("Failed to decompress, bad input");
                 }
             } catch (DataFormatException e) {
@@ -167,7 +164,7 @@ public class Raf {
                 int decompressedSize = 0;
                 ReplacementGeneratorWrapper replacement = replacements.get(entry.name);
                 if (old.getFilePointer() != entry.offset) {
-                    debug("FP should already be at correct offset in old data. Should be " + entry.offset + ", got " + old.getFilePointer());
+                    Log.warn("FP should already be at correct offset in old data. Should be " + entry.offset + ", got " + old.getFilePointer());
                     old.seek(entry.offset);
                 }
                 byte[] oldData = new byte[entry.size];
@@ -176,13 +173,13 @@ public class Raf {
                     // Copy old
                     created.write(oldData);
                 } else {
-                    Backups.INSTANCE.setRawBytes(entry.name, oldData);
                     boolean compressed = false;
                     if (entry.size >= 2) {
                         int magic = ((oldData[0] & 0xff) << 8) | (oldData[1] & 0xff);
                         compressed = (magic == 0x7801 || magic == 0x789c);
                     }
                     byte[] replacementData = replacement.apply(compressed ? decompress(oldData) : oldData);
+                    Backups.INSTANCE.setBytes(entry.name, replacementData);
                     decompressedSize = replacementData.length;
                     if (compressed) {
                         replacementData = compress(replacementData);
@@ -197,8 +194,7 @@ public class Raf {
                     ReleaseManifest.INSTANCE.setSize(entry.name, entry.size, decompressedSize);
                 }
                 if (entry.size != expectedSize) {
-                    debug("Mismatched sizes! Expected " + expectedSize + ", got " + entry.size);
-                    throw null;
+                    throw new RuntimeException("Mismatched sizes! Expected " + expectedSize + ", got " + entry.size);
                 }
             }
         } catch (IOException e) {
@@ -234,6 +230,10 @@ public class Raf {
         }
         buffer.force();
 
+        sanityCheck();
+    }
+
+    private void sanityCheck() {
         rafEntryList.forEach(Raf.RAFEntry::checkExpectedBytes);
 
         List<RAFEntry> oldList = new ArrayList<>(rafEntryList);
@@ -241,11 +241,9 @@ public class Raf {
         parse();
         for (int i = 0; i < rafEntryList.size(); i++) {
             RAFEntry old = oldList.get(i);
-            RAFEntry n = rafEntryList.get(i);
-            if (!old.toString().equals(n.toString())) {
-                debug("Mismatch");
-                debug(String.valueOf(old));
-                debug(String.valueOf(n));
+            RAFEntry now = rafEntryList.get(i);
+            if (!old.toString().equals(now.toString())) {
+                Log.warn("Mismatch before/after reparse before: " + old + ", now: " + now);
             }
         }
     }
@@ -261,18 +259,18 @@ public class Raf {
         int stringTableOffset = buffer.getInt();
 
         if (DEBUG_PARSE) {
-            debug("Magic is " + Integer.toHexString(magic));
-            debug("Version is " + Integer.toHexString(version));
-            debug("Riot index is " + Integer.toHexString(riotIndex));
-            debug("File list offset is " + Integer.toHexString(fileListOffset));
-            debug("String table offset is " + Integer.toHexString(stringTableOffset));
+            Log.trace("Magic is " + Integer.toHexString(magic));
+            Log.trace("Version is " + Integer.toHexString(version));
+            Log.trace("Riot index is " + Integer.toHexString(riotIndex));
+            Log.trace("File list offset is " + Integer.toHexString(fileListOffset));
+            Log.trace("String table offset is " + Integer.toHexString(stringTableOffset));
         }
 
         // File list
         buffer.position(fileListOffset);
         int count = buffer.getInt();
         if (DEBUG_PARSE) {
-            debug("Entries in file list: " + count);
+            Log.trace("Entries in file list: " + count);
         }
 
         for (int i = 0; i < count; i++) {
@@ -282,10 +280,10 @@ public class Raf {
             int size = buffer.getInt();
             int stringTableIndex = buffer.getInt();
             if (DEBUG_PARSE) {
-                debug("Hash is " + hash);
-                debug("Offset is " + offset);
-                debug("Size is " + size);
-                debug("String table index is " + stringTableIndex);
+                Log.trace("Hash is " + hash);
+                Log.trace("Offset is " + offset);
+                Log.trace("Size is " + size);
+                Log.trace("String table index is " + stringTableIndex);
             }
             rafEntryList.add(new RAFEntry(rafOffset, offset, size, stringTableIndex));
         }
@@ -319,9 +317,9 @@ public class Raf {
             }
             fileNames.add(name);
             if (DEBUG_PARSE) {
-                debug("String " + i + " offset " + offset);
-                debug("String " + i + " length " + length);
-                debug("String " + i + " is \"" + name + '"');
+                Log.trace("String " + i + " offset " + offset);
+                Log.trace("String " + i + " length " + length);
+                Log.trace("String " + i + " is \"" + name + '"');
             }
             buffer.position(oldPos);
         }
@@ -332,11 +330,11 @@ public class Raf {
         int size = 0;
         for (RAFEntry rafEntry : rafEntryList) {
             if (DEBUG_DUMP) {
-                debug(rafEntry + " in " + name);
+                Log.trace(rafEntry + " in " + name);
             }
             size += rafEntry.size;
         }
-        debug(entries + " entries in " + name + " RAF of total size " + humanReadableByteCount(size, false));
+        Log.trace(entries + " entries in " + name + " RAF of total size " + humanReadableByteCount(size, false));
     }
 
     public String toString() {

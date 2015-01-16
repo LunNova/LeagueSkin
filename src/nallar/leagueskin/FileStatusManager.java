@@ -14,8 +14,8 @@ import java.util.Map;
 import java.util.Set;
 
 public class FileStatusManager {
-    private static final ArrayListMultimap<String, FileStatus> currentStatus = ArrayListMultimap.create();
-    private static ArrayListMultimap<String, FileStatus> lastStatus = ArrayListMultimap.create();
+    private ArrayListMultimap<String, FileStatus> currentStatus = ArrayListMultimap.create();
+    private ArrayListMultimap<String, FileStatus> lastStatus = ArrayListMultimap.create();
     private final Path fileStatusLocation;
 
     public FileStatusManager() {
@@ -36,6 +36,8 @@ public class FileStatusManager {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        lastStatus = currentStatus;
+        currentStatus = ArrayListMultimap.create();
     }
 
     public void findChangedStatus(LoadingCache<String, ReplacementGeneratorWrapper> allReplacements, LoadingCache<String, ReplacementGeneratorWrapper> changedReplacements) {
@@ -57,14 +59,13 @@ public class FileStatusManager {
                 assert old.size() != 0;
                 // TODO: Add action to replace from backup
                 changedReplacements.getUnchecked(key).addGenerator(Backups.INSTANCE.getReplacementGenerator(key), true, null);
-            }
-            if (!old.equals(current)) {
+            } else if (!old.equals(current)) {
                 changedReplacements.put(key, allReplacements.getIfPresent(key));
             }
         }
     }
 
-    private static class FileStatus {
+    private static class FileStatus implements Serializable {
         long size = 0;
         long date = 0;
 
