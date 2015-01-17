@@ -31,6 +31,11 @@ public class FileStatusManager {
     }
 
     public void saveStatus() {
+        try {
+            Files.createDirectories(fileStatusLocation.getParent());
+        } catch (IOException e) {
+            throw Throw.sneaky(e);
+        }
         try (ObjectOutputStream o = new ObjectOutputStream(new FileOutputStream(fileStatusLocation.toFile()))) {
             o.writeObject(currentStatus);
         } catch (IOException e) {

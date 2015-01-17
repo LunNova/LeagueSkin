@@ -73,9 +73,12 @@ public class RafManager {
         LoadingCache<String, ReplacementGeneratorWrapper> efficientReplacements = newReplacementsCache();
         fileStatusManager.findChangedStatus(replacements, efficientReplacements);
 
-        System.out.println(efficientReplacements.asMap().toString());
-
-        rafList.forEach((raf) -> raf.update(efficientReplacements.asMap()));
+        if (efficientReplacements.size() == 0) {
+            Log.info("No files need updated");
+        } else {
+            Log.info("Updating " + efficientReplacements.size() + " files");
+            rafList.forEach((raf) -> raf.update(efficientReplacements.asMap()));
+        }
 
         fileStatusManager.saveStatus();
         Backups.INSTANCE.finish();
@@ -190,9 +193,9 @@ public class RafManager {
         }
 
         if (names.size() == 0) {
-            System.out.println("File " + shortName + " (match: " + match + ", path: " + realPath + ") does not exist in RAFs. Names in RAFs: " + shortNamesToLong.size());
+            Log.warn("File " + shortName + " (match: " + match + ", path: " + realPath + ") does not exist in RAFs.");
             if (match != null) {
-                throw new RuntimeException("File " + shortName + " (match: " + match + ", path: " + realPath + ") does not exist in RAFs. Names in RAFs: " + shortNamesToLong.size());
+                throw new RuntimeException("File " + shortName + " (match: " + match + ", path: " + realPath + ") does not exist in RAFs.");
             }
         }
         return names;
