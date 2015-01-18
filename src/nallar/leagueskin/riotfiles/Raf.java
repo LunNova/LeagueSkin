@@ -25,6 +25,21 @@ import java.util.zip.Inflater;
  * NOT THREADSAFE
  */
 public class Raf {
+    static {
+        testRafHash();
+    }
+
+    private static void testRafHash(String s, int expected) {
+        int result = rafHash(s);
+        if (result != expected) {
+            throw new Error("Unexpected rafHash result. Used " + s + ", expected: " + expected + ", got: " + result);
+        }
+    }
+
+    private static void testRafHash() {
+        testRafHash("DATA/Characters/Corki/Corki.inibin", 118575870);
+    }
+
     private static final boolean DEBUG_PARSE = Boolean.getBoolean("leagueskin.debug.parse");
     private static final boolean DEBUG_DUMP = true; //Boolean.getBoolean("leagueskin.debug.dump");
     private static final byte[] inflateBuffer = new byte[1024 * 1024];
@@ -65,13 +80,17 @@ public class Raf {
      * @return
      */
     private static int rafHash(String name) {
+        if (name.startsWith("/")) {
+            name = name.substring(1); // Strip first slash, expected format is DATA/Characters/Corki/Corki.inibin
+        }
         name = name.toLowerCase();
         int temp;
         int hash = 0;
         for (int i = 0; i < name.length(); i++) {
             hash = (hash << 4) + name.charAt(i);
-            if (0 != (temp = (hash & 0xF0000000))) {
-                hash = hash ^ (temp >> 24);
+            temp = hash & 0xF0000000;
+            if (temp != 0) {
+                hash = hash ^ (temp >>> 24);
                 hash = hash ^ temp;
             }
         }
@@ -246,6 +265,9 @@ public class Raf {
             if (!old.toString().equals(now.toString())) {
                 Log.warn("Mismatch before/after reparse before: " + old + ", now: " + now);
             }
+            if (now.hash != rafHash(now.name)) {
+                Log.warn("Incorrect RAF hash for " + now + " got: " + now.hash + " expected " + rafHash(now.getShortName()));
+            }
         }
     }
 
@@ -286,7 +308,7 @@ public class Raf {
                 Log.trace("Size is " + size);
                 Log.trace("String table index is " + stringTableIndex);
             }
-            rafEntryList.add(new RAFEntry(rafOffset, offset, size, stringTableIndex));
+            rafEntryList.add(new RAFEntry(rafOffset, offset, size, stringTableIndex, hash));
         }
 
         // String table
@@ -348,13 +370,15 @@ public class Raf {
         int offset;
         int size;
         int stringTableIndex;
+        int hash;
         byte[] expectedRawBytes;
 
-        public RAFEntry(int rafOffset, int offset, int size, int stringTableIndex) {
+        public RAFEntry(int rafOffset, int offset, int size, int stringTableIndex, int hash) {
             this.rafOffset = rafOffset;
             this.offset = offset;
             this.size = size;
             this.stringTableIndex = stringTableIndex;
+            this.hash = hash;
         }
 
         public String toString() {
