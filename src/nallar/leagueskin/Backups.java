@@ -56,7 +56,7 @@ public class Backups {
     public void setBytes(String path, byte[] bytes) {
         path = fixPath(path);
         if (!backupNames.add(path)) {
-            System.out.println("Not backing up " + path + ", already saved");
+            Log.trace("Not backing up " + path + ", already saved");
             return;
         }
         try {

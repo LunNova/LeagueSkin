@@ -76,7 +76,10 @@ public class RafManager {
         if (efficientReplacements.size() == 0) {
             Log.info("No files need updated");
         } else {
-            Log.info("Updating " + efficientReplacements.size() + " files");
+            StringBuilder sb = new StringBuilder();
+            sb.append("Updating ").append(efficientReplacements.size()).append(" files:");
+            efficientReplacements.asMap().forEach((name, replacement) -> sb.append('\n').append(name));
+            Log.info(sb.toString());
             rafList.forEach((raf) -> raf.update(efficientReplacements.asMap()));
         }
 
