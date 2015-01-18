@@ -39,31 +39,34 @@ public class SkinPack {
                 Path entry = workingDir.relativize(entryFull);
                 String forwardSlashName = entry.toString().replace('\\', '/');
                 String name = shortNameFromPath(entry);
+                if (name.startsWith("!") || forwardSlashName.contains("/!")) {
+                    continue;
+                }
                 if (Files.isDirectory(entry)) {
                     recursiveSearch(entry);
-                } else if (!name.startsWith("!") && !forwardSlashName.contains("/!")) {
-                    if (match == null || name.contains(match)) {
-                        boolean discardsPrevious = true;
-                        ReplacementGenerator replacementGenerator = previous -> Files.readAllBytes(entry);
-                        if (name.endsWith(".obj")) {
-                            discardsPrevious = false;
-                            name = name.replace(".obj", ".skn");
-                            Obj replacement = new Obj();
-                            replacement.load(entry);
-                            final String finalName = name;
-                            replacementGenerator = previous -> {
-                                Skn skn = new Skn(finalName, ByteBuffer.wrap(previous));
-                                if (replacement.getVertexes().length != skn.getVertexes().length) {
-                                    System.out.println("Mismatched vertex counts replacing " + entry);
-                                    return previous;
-                                }
-                                skn.setVertexes(replacement.getVertexes());
-                                skn.setIndices(replacement.getIndices());
-                                return skn.update();
-                            };
-                        }
-                        replacements.add(new Replacement(name, replacementGenerator, discardsPrevious, entry));
+                    continue;
+                }
+                if (match == null || name.contains(match)) {
+                    boolean discardsPrevious = true;
+                    ReplacementGenerator replacementGenerator = previous -> Files.readAllBytes(entry);
+                    if (name.endsWith(".obj")) {
+                        discardsPrevious = false;
+                        name = name.replace(".obj", ".skn");
+                        Obj replacement = new Obj();
+                        replacement.load(entry);
+                        final String finalName = name;
+                        replacementGenerator = previous -> {
+                            Skn skn = new Skn(finalName, ByteBuffer.wrap(previous));
+                            if (replacement.getVertexes().length != skn.getVertexes().length) {
+                                System.out.println("Mismatched vertex counts replacing " + entry);
+                                return previous;
+                            }
+                            skn.setVertexes(replacement.getVertexes());
+                            skn.setIndices(replacement.getIndices());
+                            return skn.update();
+                        };
                     }
+                    replacements.add(new Replacement(name, replacementGenerator, discardsPrevious, entry));
                 }
             }
         } catch (IOException e) {
