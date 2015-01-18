@@ -178,8 +178,9 @@ public class Raf {
                         int magic = ((oldData[0] & 0xff) << 8) | (oldData[1] & 0xff);
                         compressed = (magic == 0x7801 || magic == 0x789c);
                     }
-                    byte[] replacementData = replacement.apply(compressed ? decompress(oldData) : oldData);
-                    Backups.INSTANCE.setBytes(entry.name, replacementData);
+                    oldData = compressed ? decompress(oldData) : oldData;
+                    Backups.INSTANCE.setBytes(entry.name, oldData);
+                    byte[] replacementData = replacement.apply(oldData);
                     decompressedSize = replacementData.length;
                     if (compressed) {
                         replacementData = compress(replacementData);
