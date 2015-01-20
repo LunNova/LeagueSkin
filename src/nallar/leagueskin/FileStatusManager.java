@@ -70,6 +70,15 @@ public class FileStatusManager {
         }
     }
 
+    @Override
+    public String toString() {
+        return "FileStatusManager{" +
+                "currentStatus=" + currentStatus +
+                ", lastStatus=" + lastStatus +
+                ", fileStatusLocation=" + fileStatusLocation +
+                '}';
+    }
+
     private static class FileStatus implements Serializable {
         long size = 0;
         long date = 0;
