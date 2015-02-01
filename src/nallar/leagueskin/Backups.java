@@ -116,4 +116,8 @@ public class Backups {
         }
         deletions.clear();
     }
+
+    public boolean has(String match) {
+        return backupNames.contains(fixPath(match));
+    }
 }

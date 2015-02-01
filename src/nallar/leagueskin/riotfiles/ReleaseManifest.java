@@ -320,7 +320,7 @@ public class ReleaseManifest {
                 throw new RuntimeException("No name in " + toString());
             }
             if (parentFolder == null) {
-                Log.warn("No parent folder in " + toString()); // Expected? Some .luaobjs aren't in any folders. Why?
+                Log.trace("No parent folder in " + toString()); // Expected? Some .luaobjs aren't in any folders. Why?
             }
             if (offset < 1000) {
                 throw new RuntimeException("Unexpected offset - too low in " + toString());

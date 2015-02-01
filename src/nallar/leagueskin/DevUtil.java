@@ -10,11 +10,15 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.util.Arrays;
+import java.util.Scanner;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 public class DevUtil {
     public static void main(String[] args) {
+        if (args.length == 0) {
+            args = new Scanner(System.in).nextLine().split(" ");
+        }
         String matcher = args[0];
         System.out.println(Arrays.toString(args));
         boolean extractMatches = false;
@@ -41,7 +45,7 @@ public class DevUtil {
         final boolean finalExtractObjMatches = extractObjMatches;
         final boolean finalExtractMatches = extractMatches;
         matches.forEach((match) -> {
-            Log.info(match);
+            Log.info(match + (Backups.INSTANCE.has(match) ? " - replaced with custom skin" : ""));
             Raf.RAFEntry entry = rafManager.getEntry(match);
             if (finalExtractMatches) {
                 try {
