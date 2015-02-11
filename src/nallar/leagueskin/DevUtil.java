@@ -2,7 +2,7 @@ package nallar.leagueskin;
 
 import nallar.leagueskin.models.Obj;
 import nallar.leagueskin.models.Skn;
-import nallar.leagueskin.riotfiles.Raf;
+import nallar.leagueskin.riotfiles.FileEntry;
 import nallar.leagueskin.riotfiles.ReleaseManifest;
 import nallar.leagueskin.util.PathUtil;
 
@@ -33,7 +33,7 @@ public class DevUtil {
         }
         Pattern p = matcher.isEmpty() ? null : Pattern.compile(matcher, Pattern.CASE_INSENSITIVE);
         Stream<String> matches = ReleaseManifest.INSTANCE.getFileNames().stream().filter(s -> p == null || p.matcher(s).find());
-        RafManager rafManager = new RafManager(PathUtil.filearchivesDirectory());
+        FileManager fileManager = new FileManager(PathUtil.filearchivesDirectory(), PathUtil.airDeployDirectory());
 
         try {
             Files.createDirectories(PathUtil.dataDir().resolve("extract/"));
@@ -46,18 +46,18 @@ public class DevUtil {
         final boolean finalExtractMatches = extractMatches;
         matches.forEach((match) -> {
             Log.info(match + (Backups.INSTANCE.has(match) ? " - replaced with custom skin" : ""));
-            Raf.RAFEntry entry = rafManager.getEntry(match);
+            FileEntry entry = fileManager.getEntry(match);
             if (finalExtractMatches) {
                 try {
-                    Files.write(PathUtil.dataDir().resolve("extract/" + entry.getShortName()), entry.getBytes());
+                    Files.write(PathUtil.dataDir().resolve("extract/" + entry.getFileName()), entry.getDecompressedBytes());
                 } catch (Exception e) {
-                    throw new RuntimeException("Error extracting " + entry.getShortName(), e);
+                    throw new RuntimeException("Error extracting " + entry.getFileName(), e);
                 }
             }
             if (finalExtractObjMatches && match.endsWith(".skn")) {
                 Skn made;
                 try {
-                    made = new Skn(entry.name, ByteBuffer.wrap(entry.getBytes()));
+                    made = new Skn(entry.getPath(), ByteBuffer.wrap(entry.getDecompressedBytes()));
                 } catch (Exception e) {
                     e.printStackTrace();
                     return;
@@ -65,7 +65,7 @@ public class DevUtil {
                 Obj obj = new Obj();
                 obj.setIndices(made.getIndices());
                 obj.setVertexes(made.getVertexes());
-                obj.save(PathUtil.dataDir().resolve("skinify/" + entry.getShortName() + ".obj"));
+                obj.save(PathUtil.dataDir().resolve("skinify/" + entry.getFileName() + ".obj"));
             }
         });
     }

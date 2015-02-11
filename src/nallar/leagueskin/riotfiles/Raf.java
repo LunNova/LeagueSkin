@@ -24,7 +24,7 @@ import java.util.zip.Inflater;
  * Parses Riot Archive Format (.RAF) files
  * NOT THREADSAFE
  */
-public class Raf {
+public class Raf implements FileSource {
     static {
         testRafHash();
     }
@@ -47,7 +47,7 @@ public class Raf {
     private final Path location;
     private final String name;
     private final MappedByteBuffer buffer;
-    private List<RAFEntry> rafEntryList = new ArrayList<>();
+    private List<RafEntry> rafEntryList = new ArrayList<>();
     private Set<String> fileNames = new HashSet<>();
 
     public Raf(Path location) {
@@ -63,6 +63,7 @@ public class Raf {
         b.order(ByteOrder.LITTLE_ENDIAN);
         this.buffer = b;
         parse();
+        fixManifest();
     }
 
     private static String humanReadableByteCount(long bytes, boolean si) {
@@ -139,22 +140,24 @@ public class Raf {
         return compressed;
     }
 
-    public Collection<RAFEntry> getEntries() {
+    @Override
+    public Collection<FileEntry> getEntries() {
         return new ArrayList<>(rafEntryList);
     }
 
-    public void fixManifest() {
+    private void fixManifest() {
         rafEntryList.forEach(ReleaseManifest.INSTANCE::setSize);
     }
 
+    @Override
     public void update(Map<String, ReplacementGeneratorWrapper> replacements) {
         if (Collections.disjoint(fileNames, replacements.keySet())) {
             return;
         }
         //dump();
         //debug("In common for " + this);
-        List<RAFEntry> sortedRafList = new ArrayList<>(rafEntryList);
-        Collections.sort(sortedRafList, (s1, s2) -> Integer.compareUnsigned(s1.offset, s2.offset));
+        List<RafEntry> sortedRafList = new ArrayList<>(rafEntryList);
+        Collections.sort(sortedRafList, (s1, s2) -> Integer.compareUnsigned(s1.rafDatOffset, s2.rafDatOffset));
 
         // Rename .raf.dat to .raf.dat.bak
         // Open for reading, memory mapped.
@@ -177,14 +180,14 @@ public class Raf {
                 RandomAccessFile old = new RandomAccessFile(rafDatBak.toFile(), "r");
                 RandomAccessFile created = new RandomAccessFile(rafDat.toFile(), "rw")
         ) {
-            for (RAFEntry entry : sortedRafList) {
+            for (RafEntry entry : sortedRafList) {
                 int expectedSize = entry.size;
                 int offset = (int) created.getFilePointer();
                 int decompressedSize = 0;
-                ReplacementGeneratorWrapper replacement = replacements.get(entry.name);
-                if (old.getFilePointer() != entry.offset) {
-                    Log.warn("FP should already be at correct offset in old data. Should be " + entry.offset + ", got " + old.getFilePointer());
-                    old.seek(entry.offset);
+                ReplacementGeneratorWrapper replacement = replacements.get(entry.getPath());
+                if (old.getFilePointer() != entry.rafDatOffset) {
+                    Log.warn("FP should already be at correct offset in old data. Should be " + entry.rafDatOffset + ", got " + old.getFilePointer());
+                    old.seek(entry.rafDatOffset);
                 }
                 byte[] oldData = new byte[entry.size];
                 old.readFully(oldData);
@@ -198,7 +201,7 @@ public class Raf {
                         compressed = (magic == 0x7801 || magic == 0x789c);
                     }
                     oldData = compressed ? decompress(oldData) : oldData;
-                    Backups.INSTANCE.setBytes(entry.name, oldData);
+                    Backups.INSTANCE.setBytes(entry.getPath(), oldData);
                     byte[] replacementData = replacement.apply(oldData);
                     decompressedSize = replacementData.length;
                     if (compressed) {
@@ -208,10 +211,10 @@ public class Raf {
                     entry.expectedRawBytes = replacementData;
                     created.write(replacementData);
                 }
-                entry.offset = offset;
+                entry.rafDatOffset = offset;
                 entry.size = (int) created.getFilePointer() - offset;
                 if (replacement != null) {
-                    ReleaseManifest.INSTANCE.setSize(entry.name, entry.size, decompressedSize);
+                    ReleaseManifest.INSTANCE.setSize(entry.getPath(), entry.size, decompressedSize);
                 }
                 if (entry.size != expectedSize) {
                     throw new RuntimeException("Mismatched sizes! Expected " + expectedSize + ", got " + entry.size);
@@ -243,9 +246,9 @@ public class Raf {
             throw Throw.sneaky(e);
         }
 
-        for (RAFEntry entry : rafEntryList) {
+        for (RafEntry entry : rafEntryList) {
             buffer.position(entry.rafOffset + 4); // skip hash
-            buffer.putInt(entry.offset);
+            buffer.putInt(entry.rafDatOffset);
             buffer.putInt(entry.size);
         }
         buffer.force();
@@ -254,19 +257,19 @@ public class Raf {
     }
 
     private void sanityCheck() {
-        rafEntryList.forEach(Raf.RAFEntry::checkExpectedBytes);
+        rafEntryList.forEach(RafEntry::checkExpectedBytes);
 
-        List<RAFEntry> oldList = new ArrayList<>(rafEntryList);
+        List<FileEntry> oldList = new ArrayList<>(rafEntryList);
         rafEntryList.clear();
         parse();
         for (int i = 0; i < rafEntryList.size(); i++) {
-            RAFEntry old = oldList.get(i);
-            RAFEntry now = rafEntryList.get(i);
+            FileEntry old = oldList.get(i);
+            RafEntry now = rafEntryList.get(i);
             if (!old.toString().equals(now.toString())) {
                 Log.warn("Mismatch before/after reparse before: " + old + ", now: " + now);
             }
-            if (now.hash != rafHash(now.name)) {
-                Log.warn("Incorrect RAF hash for " + now + " got: " + now.hash + " expected " + rafHash(now.getShortName()));
+            if (now.hash != rafHash(now.getPath())) {
+                Log.warn("Incorrect RAF hash for " + now + " got: " + now.hash + " expected " + rafHash(now.getFileName()));
             }
         }
     }
@@ -299,16 +302,16 @@ public class Raf {
         for (int i = 0; i < count; i++) {
             int rafOffset = buffer.position();
             int hash = buffer.getInt();
-            int offset = buffer.getInt();
+            int rafDatOffset = buffer.getInt();
             int size = buffer.getInt();
             int stringTableIndex = buffer.getInt();
             if (DEBUG_PARSE) {
                 Log.trace("Hash is " + hash);
-                Log.trace("Offset is " + offset);
+                Log.trace("Offset is " + rafDatOffset);
                 Log.trace("Size is " + size);
                 Log.trace("String table index is " + stringTableIndex);
             }
-            rafEntryList.add(new RAFEntry(rafOffset, offset, size, stringTableIndex, hash));
+            rafEntryList.add(new RafEntry(rafOffset, rafDatOffset, size, stringTableIndex, hash));
         }
 
         // String table
@@ -332,9 +335,9 @@ public class Raf {
             } catch (UnsupportedEncodingException e) {
                 throw Throw.sneaky(e);
             }
-            for (RAFEntry rafEntry : rafEntryList) {
+            for (RafEntry rafEntry : rafEntryList) {
                 if (rafEntry.stringTableIndex == i) {
-                    rafEntry.name = name; // For consistency with ReleaseManifest names
+                    rafEntry.path = name; // For consistency with ReleaseManifest names
                     break;
                 }
             }
@@ -351,7 +354,7 @@ public class Raf {
     public void dump() {
         int entries = rafEntryList.size();
         int size = 0;
-        for (RAFEntry rafEntry : rafEntryList) {
+        for (RafEntry rafEntry : rafEntryList) {
             if (DEBUG_DUMP) {
                 Log.trace(rafEntry + " in " + name);
             }
@@ -364,43 +367,45 @@ public class Raf {
         return name + " RAF with " + rafEntryList.size() + " entries";
     }
 
-    public class RAFEntry {
-        public String name;
-        int rafOffset;
-        int offset;
-        int size;
-        int stringTableIndex;
-        int hash;
-        byte[] expectedRawBytes;
+    public class RafEntry implements FileEntry {
+        private String path;
+        private int rafOffset;
+        private int rafDatOffset;
+        private int size;
+        private int stringTableIndex;
+        private int hash;
+        private byte[] expectedRawBytes;
 
-        public RAFEntry(int rafOffset, int offset, int size, int stringTableIndex, int hash) {
+        public RafEntry(int rafOffset, int rafDatOffset, int size, int stringTableIndex, int hash) {
             this.rafOffset = rafOffset;
-            this.offset = offset;
+            this.rafDatOffset = rafDatOffset;
             this.size = size;
             this.stringTableIndex = stringTableIndex;
             this.hash = hash;
         }
 
         public String toString() {
-            return name + " is of size " + humanReadableByteCount(size, false) + " at offset " + offset;
+            return path + " is of size " + humanReadableByteCount(size, false) + " at offset " + rafDatOffset;
         }
 
-        public String getShortName() {
-            return name.substring(name.lastIndexOf('/') + 1);
+        @Override
+        public String getPath() {
+            return path;
         }
 
         public void checkExpectedBytes() {
             if (expectedRawBytes != null && !Arrays.equals(expectedRawBytes, getRawBytes())) {
-                throw new RuntimeException("Mismatch");
+                throw new RuntimeException("Mismatch for expected contents of " + this);
             }
         }
 
+        @Override
         public byte[] getRawBytes() {
             Path rafDat = Paths.get(location.toString() + ".dat");
             byte[] data;
             try (RandomAccessFile raf = new RandomAccessFile(rafDat.toFile(), "r")) {
                 data = new byte[size];
-                raf.seek(offset);
+                raf.seek(rafDatOffset);
                 raf.readFully(data);
             } catch (IOException e) {
                 throw Throw.sneaky(e);
@@ -408,15 +413,25 @@ public class Raf {
             return data;
         }
 
-        public byte[] getBytes() {
+        @Override
+        public byte[] getDecompressedBytes() {
             byte[] data = getRawBytes();
             if (size >= 2) {
                 short magic = (short) ((((data[0] & 0xff) << 8)) | (data[1] & 0xff));
                 if (magic == 0x7801 || magic == 0x789c) {
-                    data = decompress(data);
+                    try {
+                        data = decompress(data);
+                    } catch (RuntimeException e) {
+                        throw new RuntimeException("Failed to decompress " + toString(), e);
+                    }
                 }
             }
             return data;
+        }
+
+        @Override
+        public int getSizeOnDisk() {
+            return size;
         }
     }
 }

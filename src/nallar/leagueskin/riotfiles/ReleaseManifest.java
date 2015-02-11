@@ -18,14 +18,14 @@ import java.util.List;
 import java.util.Map;
 
 public class ReleaseManifest {
-    public static final ReleaseManifest INSTANCE = new ReleaseManifest(PathUtil.releaseDirectory().resolve("releasemanifest"));
-    private static final int EXPECTED_MAX_SIZE = 1024 * 1024 * 75; // 100MB
+    public static final ReleaseManifest INSTANCE = new ReleaseManifest(PathUtil.releaseDirectory(PathUtil.releasesDirectory()).resolve("releasemanifest"));
+    private static final int EXPECTED_MAX_SIZE = 1024 * 1024 * 150; // 150MB - DJ sona music = largest file
     private final Path location;
     private final String name;
     private final MappedByteBuffer buffer;
-    private final Map<String, FileEntry> fileEntryMap = new HashMap<>();
+    private final Map<String, ManifestEntry> fileEntryMap = new HashMap<>();
     private DirEntry[] dirEntries;
-    private FileEntry[] fileEntries;
+    private ManifestEntry[] manifestEntries;
     private String[] strings;
 
     public ReleaseManifest(Path location) {
@@ -53,21 +53,25 @@ public class ReleaseManifest {
     }
 
     public void sanityCheck() {
-        for (FileEntry fileEntry : fileEntries) {
-            fileEntry.sanityCheck();
+        for (ManifestEntry manifestEntry : manifestEntries) {
+            manifestEntry.sanityCheck();
         }
     }
 
-    public void setSize(Raf.RAFEntry entry) {
-        String fullName = entry.name;
-        int compressedSize = entry.size;
-        FileEntry fileEntry = fileEntryMap.get(fullName);
-        if (fileEntry == null) {
+    public void setSize(nallar.leagueskin.riotfiles.FileEntry entry) {
+        String fullName = entry.getPath();
+        int compressedSize = entry.getSizeOnDisk();
+        ManifestEntry manifestEntry = fileEntryMap.get(fullName);
+        if (manifestEntry == null) {
             return;
         }
-        if (fileEntry.compressedSize != compressedSize) {
-            int uncompressedSize = entry.getBytes().length;
-            fileEntry.setSize(compressedSize, uncompressedSize, buffer);
+        if (manifestEntry.compressedSize != compressedSize) {
+            try {
+                int uncompressedSize = entry.getDecompressedBytes().length;
+                manifestEntry.setSize(compressedSize, uncompressedSize, buffer);
+            } catch (Exception e) {
+                Log.error("Failed to correct manifest for " + entry, e);
+            }
         }
     }
 
@@ -75,12 +79,12 @@ public class ReleaseManifest {
         if (!fullName.startsWith("/")) {
             throw new RuntimeException("Must use full name, not relative. Got " + fullName);
         }
-        FileEntry fileEntry = fileEntryMap.get(fullName);
-        if (fileEntry == null) {
+        ManifestEntry manifestEntry = fileEntryMap.get(fullName);
+        if (manifestEntry == null) {
             throw new RuntimeException("Didn't find " + fullName + " in releasemanifest");
         }
-        if (fileEntry.compressedSize != compressedSize) {
-            fileEntry.setSize(compressedSize, uncompressedSize, buffer);
+        if (manifestEntry.compressedSize != compressedSize) {
+            manifestEntry.setSize(compressedSize, uncompressedSize, buffer);
         }
     }
 
@@ -129,9 +133,9 @@ public class ReleaseManifest {
             // This always fails... is entry count not correct?
         }
 
-        fileEntries = new FileEntry[fileCount];
+        manifestEntries = new ManifestEntry[fileCount];
         for (int i = 0; i < fileCount; i++) {
-            fileEntries[i] = new FileEntry(buffer);
+            manifestEntries[i] = new ManifestEntry(buffer);
         }
 
         final int stringHeaderPos = fileHeaderPos + 4 + (fileCount * 44);
@@ -167,7 +171,7 @@ public class ReleaseManifest {
         }
 
         for (int i = 0; i < fileCount; i++) {
-            FileEntry entry = fileEntries[i];
+            ManifestEntry entry = manifestEntries[i];
             if (entry.nameIndex == 0) {
                 entry.name = "";
             } else {
@@ -177,8 +181,8 @@ public class ReleaseManifest {
 
         recursiveDirectorySearch();
 
-        for (FileEntry fileEntry : fileEntries) {
-            fileEntryMap.put(fileEntry.getPath(), fileEntry);
+        for (ManifestEntry manifestEntry : manifestEntries) {
+            fileEntryMap.put(manifestEntry.getPath(), manifestEntry);
         }
     }
 
@@ -193,9 +197,9 @@ public class ReleaseManifest {
         if (lastDir != null) {
             int lastFileOffset = lastDir.fileIndex;
             for (int fiOffset = lastFileOffset; fiOffset < fileOffset; fiOffset++) {
-                FileEntry fileEntry = fileEntries[fiOffset];
-                fileEntry.parentFolder = lastDir;
-                lastDir.files.add(fileEntry);
+                ManifestEntry manifestEntry = manifestEntries[fiOffset];
+                manifestEntry.parentFolder = lastDir;
+                lastDir.files.add(manifestEntry);
             }
         }
         try {
@@ -213,14 +217,14 @@ public class ReleaseManifest {
 
     public List<String> getFileNames() {
         List<String> names = new ArrayList<>();
-        for (FileEntry fileEntry : fileEntries) {
-            names.add(fileEntry.getPath());
+        for (ManifestEntry manifestEntry : manifestEntries) {
+            names.add(manifestEntry.getPath());
         }
         return names;
     }
 
     public static class DirEntry {
-        public List<FileEntry> files = new ArrayList<>();
+        public List<ManifestEntry> files = new ArrayList<>();
         public DirEntry parentFolder;
         String name;
         int nameIndex;
@@ -258,7 +262,7 @@ public class ReleaseManifest {
         }
     }
 
-    public static class FileEntry {
+    private static class ManifestEntry {
         public DirEntry parentFolder;
         int offset;
         String name;
@@ -267,10 +271,7 @@ public class ReleaseManifest {
         int size;
         int compressedSize;
 
-        public FileEntry() {
-        }
-
-        public FileEntry(ByteBuffer buffer) {
+        public ManifestEntry(ByteBuffer buffer) {
             offset = buffer.position();
             nameIndex = buffer.getInt();
             version = buffer.getInt();

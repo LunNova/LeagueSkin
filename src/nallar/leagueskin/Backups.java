@@ -29,20 +29,12 @@ public class Backups {
         recursiveSearch(location);
     }
 
-    private static String fixPath(String path) {
-        path = path.replace('\\', '/');
-        if (path.startsWith("/")) {
-            return path.substring(1);
-        }
-        return path;
-    }
-
     private Path pathFromString(String path) {
-        return location.resolve(fixPath(path));
+        return location.resolve(PathUtil.canonical(path));
     }
 
     public byte[] getBytes(String path) {
-        path = fixPath(path);
+        path = PathUtil.canonical(path);
         if (!backupNames.contains(path)) {
             throw new RuntimeException("No backup for " + path);
         }
@@ -54,7 +46,7 @@ public class Backups {
     }
 
     public void setBytes(String path, byte[] bytes) {
-        path = fixPath(path);
+        path = PathUtil.canonical(path);
         if (!backupNames.add(path)) {
             Log.trace("Not backing up " + path + ", already saved");
             return;
@@ -69,7 +61,7 @@ public class Backups {
     }
 
     public void delete(String path) {
-        path = fixPath(path);
+        path = PathUtil.canonical(path);
         if (!backupNames.remove(path)) {
             throw new RuntimeException("No backup for " + path);
         }
@@ -83,7 +75,7 @@ public class Backups {
                     recursiveSearch(entry);
                     continue;
                 }
-                String rafPath = fixPath(location.relativize(entry).toString());
+                String rafPath = PathUtil.canonical(location.relativize(entry).toString());
                 backupNames.add(rafPath);
             }
         } catch (IOException e) {
@@ -92,7 +84,7 @@ public class Backups {
     }
 
     public ReplacementGenerator getReplacementGenerator(String path_) {
-        String path = fixPath(path_);
+        String path = PathUtil.canonical(path_);
         if (!backupNames.contains(path)) {
             throw new RuntimeException("No backup for " + path);
         }
@@ -118,6 +110,6 @@ public class Backups {
     }
 
     public boolean has(String match) {
-        return backupNames.contains(fixPath(match));
+        return backupNames.contains(PathUtil.canonical(match));
     }
 }
