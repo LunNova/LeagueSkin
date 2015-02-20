@@ -63,7 +63,10 @@ public class Raf implements FileSource {
         b.order(ByteOrder.LITTLE_ENDIAN);
         this.buffer = b;
         parse();
-        fixManifest();
+        int fixed = fixManifest();
+        if (fixed != 0) {
+            Log.info("Corrected " + fixed + " manifest entries.");
+        }
     }
 
     private static String humanReadableByteCount(long bytes, boolean si) {
@@ -145,8 +148,14 @@ public class Raf implements FileSource {
         return new ArrayList<>(rafEntryList);
     }
 
-    private void fixManifest() {
-        rafEntryList.forEach(ReleaseManifest.INSTANCE::setSize);
+    private int fixManifest() {
+        int[] size = {0};
+        rafEntryList.forEach((x) -> {
+            if (ReleaseManifest.INSTANCE.setSize(x)) {
+                size[0]++;
+            }
+        });
+        return size[0];
     }
 
     @Override

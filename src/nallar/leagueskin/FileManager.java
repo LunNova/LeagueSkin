@@ -91,27 +91,50 @@ public class FileManager {
             match = matchPart.substring(indexDollar + 2, matchPart.lastIndexOf('/'));
         }
         // TODO: Refactor to return list of names, have * select all instead of requiring single match
-        List<String> names = shortNamesToLong.get(shortName);
-        if (names.size() > 1) {
-            if (match == null) {
-                for (String name : names) {
-                    if (!name.startsWith("AIR/")) {
-                        throw new RuntimeException("Multiple possible full names for " + shortName + "(path: " + realPath + "), please specify the full name.  Got " + names);
+        List<String> names;
+        if (shortName.contains("^")) {
+            names = new ArrayList<>();
+            String extension = shortName.substring(shortName.indexOf('.'));
+            String start = shortName.substring(0, shortName.indexOf('^'));
+            for (String name : shortNamesToLong.keySet()) {
+                if (name.startsWith(start) && name.endsWith(extension)) {
+                    int c = name.charAt(start.length());
+                    boolean matched = c == '.';
+                    if (!matched && c == '_') {
+                        c = name.charAt(start.length() + 1);
+                        if (c >= '0' && c <= '9') {
+                            matched = true;
+                        }
+                    }
+                    if (matched) {
+                        names.addAll(shortNamesToLong.get(name));
                     }
                 }
-            } else if (!match.isEmpty()) {
-                boolean immediateEnding = !match.endsWith("$");
-                if (!immediateEnding) {
-                    match = match.substring(0, match.length() - 1);
-                }
-                match = match.replace('.', '/').toLowerCase() + (immediateEnding ? '/' + shortName : "");
-                List<String> newNames = new ArrayList<>();
-                for (String name : names) {
-                    if (name.toLowerCase().contains(match)) {
-                        newNames.add(name);
+            }
+        } else {
+            names = shortNamesToLong.get(shortName);
+            if (names.size() > 1) {
+                if (match == null) {
+                    for (String name : names) {
+                        if (!name.startsWith("AIR/") && !name.endsWith(".dds")) {
+                            throw new RuntimeException("Multiple possible full names for " + shortName + "(path: " + realPath + "), please specify the full name.  Got " + names);
+                        }
                     }
+                    Log.warn("Multiple possible full names for " + shortName + "(path: " + realPath + "), please specify the full name.  Got " + names);
+                } else if (!match.isEmpty()) {
+                    boolean immediateEnding = !match.endsWith("$");
+                    if (!immediateEnding) {
+                        match = match.substring(0, match.length() - 1);
+                    }
+                    match = match.replace('.', '/').toLowerCase() + (immediateEnding ? '/' + shortName : "");
+                    List<String> newNames = new ArrayList<>();
+                    for (String name : names) {
+                        if (name.toLowerCase().contains(match)) {
+                            newNames.add(name);
+                        }
+                    }
+                    names = newNames;
                 }
-                names = newNames;
             }
         }
 

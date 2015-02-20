@@ -58,24 +58,25 @@ public class ReleaseManifest {
         }
     }
 
-    public void setSize(nallar.leagueskin.riotfiles.FileEntry entry) {
+    public boolean setSize(nallar.leagueskin.riotfiles.FileEntry entry) {
         String fullName = entry.getPath();
         int compressedSize = entry.getSizeOnDisk();
         ManifestEntry manifestEntry = fileEntryMap.get(fullName);
         if (manifestEntry == null) {
-            return;
+            return false;
         }
         if (manifestEntry.compressedSize != compressedSize) {
             try {
                 int uncompressedSize = entry.getDecompressedBytes().length;
-                manifestEntry.setSize(compressedSize, uncompressedSize, buffer);
+                return manifestEntry.setSize(compressedSize, uncompressedSize, buffer);
             } catch (Exception e) {
                 Log.error("Failed to correct manifest for " + entry, e);
             }
         }
+        return false;
     }
 
-    public void setSize(String fullName, int compressedSize, int uncompressedSize) {
+    public boolean setSize(String fullName, int compressedSize, int uncompressedSize) {
         if (!fullName.startsWith("/")) {
             throw new RuntimeException("Must use full name, not relative. Got " + fullName);
         }
@@ -84,8 +85,9 @@ public class ReleaseManifest {
             throw new RuntimeException("Didn't find " + fullName + " in releasemanifest");
         }
         if (manifestEntry.compressedSize != compressedSize) {
-            manifestEntry.setSize(compressedSize, uncompressedSize, buffer);
+            return manifestEntry.setSize(compressedSize, uncompressedSize, buffer);
         }
+        return false;
     }
 
     private void parse() {
@@ -300,7 +302,10 @@ public class ReleaseManifest {
             return name;
         }
 
-        public void setSize(int compressedSize, int uncompressedSize, ByteBuffer byteBuffer) {
+        public boolean setSize(int compressedSize, int uncompressedSize, ByteBuffer byteBuffer) {
+            if (size == uncompressedSize && compressedSize == this.compressedSize) {
+                return false;
+            }
             size = uncompressedSize;
             this.compressedSize = compressedSize;
             sanityCheck();
@@ -308,6 +313,7 @@ public class ReleaseManifest {
             byteBuffer.position(offset + 28);
             byteBuffer.putInt(size);
             byteBuffer.putInt(compressedSize);
+            return true;
         }
 
         public void sanityCheck() {

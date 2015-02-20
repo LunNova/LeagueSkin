@@ -1,5 +1,6 @@
 package nallar.leagueskin.models;
 
+import com.google.common.base.Charsets;
 import nallar.leagueskin.Log;
 import nallar.leagueskin.util.Throw;
 
@@ -11,17 +12,27 @@ import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Parses Riot Skin .SKN files
  */
-public class Skn implements TriModel, VertexModel {
+public class Skn implements Model {
     private static final boolean DEBUG_PARSE = Boolean.getBoolean("leagueskin.debug.parse");
     private static final boolean DEBUG_DUMP = Boolean.getBoolean("leagueskin.debug.dump");
+    private static final int MAGIC = 0x00112233;
     private final String name;
     private final ByteBuffer buffer;
     private int[][] indices;
-    private float[][] vertexes;
+    private Vertex[] vertexes;
+    short version = 4;
+    private int numberOfMaterials = 0;
+    private short numMesh; // Not really sure what this is
+    private List<Material> materials = new ArrayList<>();
+    private int unknownIntV4;
+    private byte[] unknownBytesV4 = new byte[48];
 
     public Skn(String name, ByteBuffer buffer) {
         this.name = name;
@@ -46,12 +57,8 @@ public class Skn implements TriModel, VertexModel {
     }
 
     private void sanityCheck() {
-        for (float[] vertex : vertexes) {
-            for (float part : vertex) {
-                if (part > 1000 || part < -1000) {
-                    throw new RuntimeException("Failed sanity check - extreme vertex coordinate " + part);
-                }
-            }
+        for (Vertex vertex : vertexes) {
+            vertex.sanityCheck();
         }
     }
 
@@ -67,19 +74,17 @@ public class Skn implements TriModel, VertexModel {
 
         // Header
         int magic = buffer.getInt();
-        if (magic != 0x00112233) {
+        if (magic != MAGIC) {
             throw new RuntimeException(name + " is not a valid SKN file - wrong magic value, got " + Integer.toHexString(magic) + ", expected 0x00112233");
         }
 
-        short versionThingy = buffer.getShort();
-        //debug("hasMat: " + versionThingy);
-        short numMesh = buffer.getShort();
+        version = buffer.getShort(); // Seems to be a version indicator?
+        numMesh = buffer.getShort();
         //debug("numMesh: " + numMesh);
 
-        if (versionThingy == 0) {
-            //?
-        } else {
-            int numberOfMaterials = buffer.getInt();
+        if (version != 0) {
+            materials.clear();
+            numberOfMaterials = buffer.getInt();
 
             //debug("Number of materials is " + numberOfMaterials);
 
@@ -98,18 +103,19 @@ public class Skn implements TriModel, VertexModel {
                 int numVertexes = buffer.getInt();
                 int startIndex = buffer.getInt();
                 int numIndexes = buffer.getInt();
+                materials.add(new Material(name, startVertex, numVertexes, startIndex, numIndexes));
             }
         }
 
-        if (versionThingy == 4) {
-            buffer.getInt(); // skip 1 int - what is it?
+        if (version == 4) {
+            unknownIntV4 = buffer.getInt(); // skip 1 int - what is it?
         }
 
         int numIndices = buffer.getInt();
         int numVertexes = buffer.getInt();
 
-        if (versionThingy == 4) {
-            buffer.position(buffer.position() + 48);
+        if (version == 4) {
+            buffer.get(unknownBytesV4);
         }
 
         //debug("Indices " + numIndices + ", verts: " + numVertexes);
@@ -123,66 +129,118 @@ public class Skn implements TriModel, VertexModel {
 
         this.indices = indices;
 
-        vertexes = new float[numVertexes][3];
+        vertexes = new Vertex[numVertexes];
 
         for (int i = 0; i < numVertexes; i++) {
-            float xPos = buffer.getFloat();
-            float yPos = buffer.getFloat();
-            float zPos = buffer.getFloat();
-            vertexes[i][0] = xPos;
-            vertexes[i][1] = yPos;
-            vertexes[i][2] = zPos;
-
-            final int BONE_INDEX_SIZE = 4;
-
-            for (int j = 0; j < BONE_INDEX_SIZE; j++) {
-                byte boneIndex = buffer.get();
-            }
-
-            for (int j = 0; j < BONE_INDEX_SIZE; j++) {
-                float boneWeight = buffer.getFloat();
-            }
-
-
-            float xNor = buffer.getFloat();
-            float yNor = buffer.getFloat();
-            float ZNor = buffer.getFloat();
-
-            float xTex = buffer.getFloat();
-            float yTex = buffer.getFloat();
-
-            //debug("x " + xPos + ", y "+ yPos + " z " + zPos);
+            Vertex vertex = vertexes[i] = new Vertex();
+            vertex.read(buffer);
         }
 
-        // Make array of indexes - uint16 * numIndices
-        // Make array of verts - riot vertex thingy * numVertexes
-//        OBJ test = new OBJ();
-//        test.setIndices(indices);
-//        test.setVertexes(vertexes);
-//        test.save(Paths.get("./test/soraka.obj"));
+        buffer.position(buffer.position() + 12); //Skip 12 null bytes
 
-        //throw null;
+        if (calculateSize() != buffer.capacity()) {
+            Log.info("Buffer size mismatch. expected: " + calculateSize() + " real: " + buffer.capacity() + " our position: " + buffer.position());
+            int remaining = buffer.remaining();
+            byte[] r = new byte[buffer.remaining()];
+            buffer.get(remaining);
+            Log.info(Arrays.toString(r));
+        }
+
+        Log.info("equal: " + Arrays.equals(asBytes(), asBytesFromOld()));
     }
 
-    public byte[] update() {
-        sanityCheck();
+    private int calculateSize() {
+        int size = 0;
+        size += 4 + 2 + 2; // magic + version + numMesh
+        if (version != 0) {
+            size += 4; // Number of materials field
+            size += numberOfMaterials * (64 + 4 * 4); // (64 byte string + 4 ints) per material
+            if (version == 4) {
+                size += 4 + 48; // unknown int + 48 unknown bytes of data
+            }
+        }
+        size += 2 * 4; // 2 ints for number of indices and vertexes
+        size += indices.length * 3 * 2; // Indice entry = 3 * short
+        size += vertexes.length * Vertex.BYTES_PER_ENTRY;
+        size += 12; // 12 null bytes
+        return size;
+    }
 
+    public byte[] asBytes() {
+        sanityCheck();
+        ByteBuffer buffer = ByteBuffer.allocate(calculateSize());
+        buffer.order(ByteOrder.LITTLE_ENDIAN);
+
+        buffer.putInt(MAGIC);
+        buffer.putShort(version);
+        buffer.putShort(numMesh);
+
+        if (version != 0) {
+            buffer.putInt(numberOfMaterials);
+
+            //debug("Number of materials is " + numberOfMaterials);
+
+            for (Material m : materials) {
+                byte[] nameBytes = new byte[64];
+                System.arraycopy(m.name.getBytes(Charsets.ISO_8859_1), 0, nameBytes, 0, m.name.length());
+                buffer.put(nameBytes);
+                buffer.putInt(m.startVertex);
+                buffer.putInt(m.numVertexes);
+                buffer.putInt(m.startIndex);
+                buffer.putInt(m.numIndexes);
+            }
+        }
+
+        if (version == 4) {
+            buffer.putInt(unknownIntV4);
+        }
+
+        buffer.putInt(indices.length * 3);
+        buffer.putInt(vertexes.length);
+
+        if (version == 4) {
+            buffer.put(unknownBytesV4);
+        }
+
+        //debug("Indices " + numIndices + ", verts: " + numVertexes);
+
+        for (int[] indice : indices) {
+            for (int j = 0; j < 3; j++) {
+                buffer.putShort((short) indice[j]);
+            }
+        }
+
+        for (Vertex v : vertexes) {
+            v.write(buffer);
+        }
+
+        buffer.put(new byte[12]);//12 null bytes
+
+        if (buffer.position() != buffer.capacity()) {
+            throw new RuntimeException("Mismatch");
+        }
+        return buffer.array().clone();
+    }
+
+    public byte[] asBytesFromOld() {
+        ByteBuffer buffer = ByteBuffer.allocate(this.buffer.capacity());
+        buffer.order(ByteOrder.LITTLE_ENDIAN);
+        this.buffer.position(0);
+        buffer.put(this.buffer);
         buffer.position(0);
 
         // Header
         int magic = buffer.getInt();
-        if (magic != 0x00112233) {
+        if (magic != MAGIC) {
             throw new RuntimeException(name + " is not a valid SKN file - wrong magic value, got " + magic + ", expected 0x00112233");
         }
 
         short versionThingy = buffer.getShort();
-        //debug("hasMat: " + versionThingy);
+        //debug("hasMat: " + version);
         short numMesh = buffer.getShort();
         //debug("numMesh: " + numMesh);
 
-        if (versionThingy == 0) {
-            //?
-        } else {
+        if (versionThingy != 0) {
             int numberOfMaterials = buffer.getInt();
 
             //debug("Number of materials is " + numberOfMaterials);
@@ -205,7 +263,7 @@ public class Skn implements TriModel, VertexModel {
         }
 
         if (versionThingy == 4) {
-            buffer.getInt(); // skip 1 int - what is it?
+            buffer.putInt(unknownIntV4);
         }
 
         int numIndices = buffer.getInt();
@@ -229,29 +287,7 @@ public class Skn implements TriModel, VertexModel {
         //vertexes = new float[numVertexes][3];
 
         for (int i = 0; i < numVertexes; i++) {
-            buffer.putFloat(vertexes[i][0]);
-            buffer.putFloat(vertexes[i][1]);
-            buffer.putFloat(vertexes[i][2]);
-
-            final int BONE_INDEX_SIZE = 4;
-
-            for (int j = 0; j < BONE_INDEX_SIZE; j++) {
-                byte boneIndex = buffer.get();
-            }
-
-            for (int j = 0; j < BONE_INDEX_SIZE; j++) {
-                float boneWeight = buffer.getFloat();
-            }
-
-
-            float xNor = buffer.getFloat();
-            float yNor = buffer.getFloat();
-            float ZNor = buffer.getFloat();
-
-            float xTex = buffer.getFloat();
-            float yTex = buffer.getFloat();
-
-            //debug("x " + xPos + ", y "+ yPos + " z " + zPos);
+            vertexes[i].write(buffer);
         }
         return buffer.array().clone();
     }
@@ -272,12 +308,28 @@ public class Skn implements TriModel, VertexModel {
     }
 
     @Override
-    public float[][] getVertexes() {
+    public Vertex[] getVertexes() {
         return vertexes;
     }
 
     @Override
-    public void setVertexes(float[][] vertexes) {
+    public void setVertexes(Vertex[] vertexes) {
         this.vertexes = vertexes;
+    }
+
+    private static class Material {
+        private final String name;
+        private final int startVertex;
+        private final int numVertexes;
+        private final int startIndex;
+        private final int numIndexes;
+
+        public Material(String name, int startVertex, int numVertexes, int startIndex, int numIndexes) {
+            this.name = name;
+            this.startVertex = startVertex;
+            this.numVertexes = numVertexes;
+            this.startIndex = startIndex;
+            this.numIndexes = numIndexes;
+        }
     }
 }

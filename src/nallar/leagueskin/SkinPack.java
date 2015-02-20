@@ -1,5 +1,6 @@
 package nallar.leagueskin;
 
+import nallar.leagueskin.models.ModelTransfer;
 import nallar.leagueskin.models.Obj;
 import nallar.leagueskin.models.Skn;
 import nallar.leagueskin.util.Throw;
@@ -24,11 +25,64 @@ public class SkinPack {
 
     public SkinPack(Path folder, String match) {
         this.match = match;
+        preSearch(folder);
+        //if (true) { throw null; }
         recursiveSearch(folder);
     }
 
     private static String shortNameFromPath(Path p) {
         return p.getFileName().toString().toLowerCase().replace("\\", "/");
+    }
+
+    private static void preSearch(Path path) {
+        Path workingDir = Paths.get("").toAbsolutePath();
+        path = path.toAbsolutePath();
+        boolean autoDDS = false;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
+            for (Path entryFull : stream) {
+                Path entry = workingDir.relativize(entryFull);
+                String name = shortNameFromPath(entry);
+                if (name.equalsIgnoreCase("!autoDDS")) {
+                    autoDDS = true;
+                    Files.delete(entry);
+                }
+                if (name.startsWith("!")) {
+                    continue;
+                }
+                if (Files.isDirectory(entry)) {
+                    preSearch(entry);
+                    continue;
+                }
+                if (autoDDS && (name.endsWith(".jpg") || name.endsWith(".png"))) {
+                    if (name.contains("_splash")) {
+                        continue;
+                    }
+                    String extension = name.substring(name.lastIndexOf('.') + 1);
+                    String mainPart = name.substring(0, name.contains("^.") ? name.indexOf('^', 1) : name.lastIndexOf('_'));
+                    if (name.endsWith("_0." + extension) && name.contains("_square")) {
+                        name = mainPart + "^." + extension;
+                        Path oldEntry = entry;
+                        entry = entry.getParent().resolve(name);
+                        Files.move(oldEntry, entry);
+                    }
+                    String nameLower = name.toLowerCase();
+                    String champ = name.substring(0, name.contains("_") ? name.indexOf('_') : name.indexOf('^', 1));
+                    if (nameLower.contains("_square^.")) {
+                        Path out = entry.getParent().resolve(champ + "_square^.dds");
+                        DDSConverter.convert(entry, out);
+                        Path circle = entry.getParent().resolve(champ + "_circle^.dds");
+                        if (!Files.exists(circle)) {
+                            Files.copy(out, circle);
+                        }
+                    } else {
+                        Path out = entry.getParent().resolve(champ + "loadscreen^.dds");
+                        DDSConverter.convert(entry, out);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            throw Throw.sneaky(e);
+        }
     }
 
     private void recursiveSearch(Path path) {
@@ -37,9 +91,8 @@ public class SkinPack {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
             for (Path entryFull : stream) {
                 Path entry = workingDir.relativize(entryFull);
-                String forwardSlashName = entry.toString().replace('\\', '/');
                 String name = shortNameFromPath(entry);
-                if (name.startsWith("!") || forwardSlashName.contains("/!")) {
+                if (name.startsWith("!")) {
                     continue;
                 }
                 if (Files.isDirectory(entry)) {
@@ -53,17 +106,20 @@ public class SkinPack {
                         discardsPrevious = false;
                         name = name.replace(".obj", ".skn");
                         Obj replacement = new Obj();
-                        replacement.load(entry);
+                        try {
+                            replacement.load(entry);
+                        } catch (Throwable t) {
+                            throw new RuntimeException("Failed to load " + entry, t);
+                        }
                         final String finalName = name;
                         replacementGenerator = previous -> {
                             Skn skn = new Skn(finalName, ByteBuffer.wrap(previous));
-                            if (replacement.getVertexes().length != skn.getVertexes().length) {
-                                System.out.println("Mismatched vertex counts replacing " + entry);
+                            try {
+                                return ModelTransfer.transfer(skn, replacement);
+                            } catch (Exception e) {
+                                Log.error("Error replacing " + entry, e);
                                 return previous;
                             }
-                            skn.setVertexes(replacement.getVertexes());
-                            skn.setIndices(replacement.getIndices());
-                            return skn.update();
                         };
                     }
                     replacements.add(new Replacement(name, replacementGenerator, discardsPrevious, entry));

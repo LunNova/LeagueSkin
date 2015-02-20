@@ -1,5 +1,6 @@
 package nallar.leagueskin;
 
+import nallar.leagueskin.models.ModelTransfer;
 import nallar.leagueskin.models.Obj;
 import nallar.leagueskin.models.Skn;
 import nallar.leagueskin.riotfiles.FileEntry;
@@ -10,14 +11,14 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.util.Arrays;
-import java.util.Scanner;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 public class DevUtil {
     public static void main(String[] args) {
         if (args.length == 0) {
-            args = new Scanner(System.in).nextLine().split(" ");
+            args = new String[]{"ahri.*04.skn", "extractObj"};
+            //args = new Scanner(System.in).nextLine().split(" ");
         }
         String matcher = args[0];
         System.out.println(Arrays.toString(args));
@@ -63,8 +64,7 @@ public class DevUtil {
                     return;
                 }
                 Obj obj = new Obj();
-                obj.setIndices(made.getIndices());
-                obj.setVertexes(made.getVertexes());
+                ModelTransfer.transfer(obj, made);
                 obj.save(PathUtil.dataDir().resolve("skinify/" + entry.getFileName() + ".obj"));
             }
         });
