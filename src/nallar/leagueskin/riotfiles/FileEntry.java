@@ -1,15 +1,15 @@
 package nallar.leagueskin.riotfiles;
 
 public interface FileEntry {
-    default String getFileName() {
-        return getPath().substring(getPath().lastIndexOf('/') + 1);
-    }
+	default String getFileName() {
+		return getPath().substring(getPath().lastIndexOf('/') + 1);
+	}
 
-    String getPath();
+	String getPath();
 
-    byte[] getRawBytes();
+	byte[] getRawBytes();
 
-    byte[] getDecompressedBytes();
+	byte[] getDecompressedBytes();
 
-    int getSizeOnDisk();
+	int getSizeOnDisk();
 }

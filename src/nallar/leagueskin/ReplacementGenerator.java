@@ -1,7 +1,7 @@
 package nallar.leagueskin;
 
-import java.io.IOException;
+import java.io.*;
 
 public interface ReplacementGenerator {
-    byte[] generateReplacement(byte[] previous) throws IOException;
+	byte[] generateReplacement(byte[] previous) throws IOException;
 }

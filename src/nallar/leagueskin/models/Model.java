@@ -1,13 +1,13 @@
 package nallar.leagueskin.models;
 
 public interface Model {
-    int[][] getIndices();
+	int[][] getIndices();
 
-    void setIndices(int[][] indices);
+	void setIndices(int[][] indices);
 
-    public Vertex[] getVertexes();
+	public Vertex[] getVertexes();
 
-    public void setVertexes(Vertex[] vertexes);
+	public void setVertexes(Vertex[] vertexes);
 
-    byte[] asBytes();
+	byte[] asBytes();
 }

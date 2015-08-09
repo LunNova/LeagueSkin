@@ -2,11 +2,10 @@ package nallar.leagueskin.riotfiles;
 
 import nallar.leagueskin.ReplacementGeneratorWrapper;
 
-import java.util.Collection;
-import java.util.Map;
+import java.util.*;
 
 public interface FileSource {
-    Collection<? extends FileEntry> getEntries();
+	Collection<? extends FileEntry> getEntries();
 
-    void update(Map<String, ReplacementGeneratorWrapper> replacements);
+	void update(Map<String, ReplacementGeneratorWrapper> replacements);
 }
