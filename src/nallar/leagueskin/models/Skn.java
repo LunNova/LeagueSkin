@@ -47,10 +47,13 @@ public class Skn implements Model {
 		b.order(ByteOrder.LITTLE_ENDIAN);
 		this.buffer = b;
 		parse();
-		sanityCheck();
+		sanityCheck(true);
 	}
 
-	private void sanityCheck() {
+	private void sanityCheck(boolean initial) {
+		if (initial && !Arrays.equals(asBytes(), asBytesFromOld())) {
+			throw new IllegalStateException("Parsed SKN result does not match input bytes.");
+		}
 		for (Vertex vertex : vertexes) {
 			vertex.sanityCheck();
 		}
@@ -139,8 +142,6 @@ public class Skn implements Model {
 			buffer.get(remaining);
 			Log.info(Arrays.toString(r));
 		}
-
-		Log.info("equal: " + Arrays.equals(asBytes(), asBytesFromOld()));
 	}
 
 	private int calculateSize() {
@@ -161,7 +162,7 @@ public class Skn implements Model {
 	}
 
 	public byte[] asBytes() {
-		sanityCheck();
+		sanityCheck(false);
 		ByteBuffer buffer = ByteBuffer.allocate(calculateSize());
 		buffer.order(ByteOrder.LITTLE_ENDIAN);
 
