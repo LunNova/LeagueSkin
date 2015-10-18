@@ -8,7 +8,7 @@ public class ModelTransfer {
 		Vertex[] temp = replacement.getVertexes();
 		if (temp != null) {
 			Vertex[] origVerts = orig.getVertexes();
-			if (temp.length == origVerts.length) {
+			if (origVerts != null && temp.length == origVerts.length) {
 				Vertex[] verts = new Vertex[temp.length];
 				for (int i = 0; i < temp.length; i++) {
 					Vertex o = origVerts[i];

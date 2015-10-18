@@ -126,22 +126,24 @@ public class Obj implements Model {
 					v.yPos = parts[1];
 					v.zPos = parts[2];
 				}
-				for (int i = 0; i < indices.length; i++) {
-					int[] indexes = indices[i];
-					int[] normalIndexes = normalIndexList.get(i);
-					int[] textureIndexes = textureIndexList.get(i);
-					for (int j = 0; j < indexes.length; j++) {
-						Vertex v = vertexes[indexes[j]];
-						if (normalIndexes[j] != -1) {
-							float[] normals = normalList.get(normalIndexes[j]);
-							v.xNor = normals[0];
-							v.yNor = normals[1];
-							v.zNor = normals[2];
-						}
-						if (textureIndexes[j] != -1) {
-							float[] textures = textureList.get(textureIndexes[j]);
-							v.xTex = textures[0];
-							v.yTex = textures[1];
+				if (indices != null) {
+					for (int i = 0; i < indices.length; i++) {
+						int[] indexes = indices[i];
+						int[] normalIndexes = normalIndexList.get(i);
+						int[] textureIndexes = textureIndexList.get(i);
+						for (int j = 0; j < indexes.length; j++) {
+							Vertex v = vertexes[indexes[j]];
+							if (normalIndexes[j] != -1) {
+								float[] normals = normalList.get(normalIndexes[j]);
+								v.xNor = normals[0];
+								v.yNor = normals[1];
+								v.zNor = normals[2];
+							}
+							if (textureIndexes[j] != -1) {
+								float[] textures = textureList.get(textureIndexes[j]);
+								v.xTex = textures[0];
+								v.yTex = textures[1];
+							}
 						}
 					}
 				}

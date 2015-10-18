@@ -133,12 +133,13 @@ public class Skn implements Model {
 			vertex.read(buffer);
 		}
 
-		buffer.position(buffer.position() + 12); //Skip 12 null bytes
+		if (buffer.remaining() >= 12)
+			buffer.position(buffer.position() + 12); //Skip 12 null bytes (sometimes not present?)
 
 		if (calculateSize() != buffer.capacity()) {
 			Log.info("Buffer size mismatch. expected: " + calculateSize() + " real: " + buffer.capacity() + " our position: " + buffer.position());
 			int remaining = buffer.remaining();
-			byte[] r = new byte[buffer.remaining()];
+			byte[] r = new byte[remaining];
 			buffer.get(remaining);
 			Log.info(Arrays.toString(r));
 		}
