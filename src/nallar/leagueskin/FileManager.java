@@ -3,7 +3,7 @@ package nallar.leagueskin;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Maps;
 import nallar.leagueskin.riotfiles.*;
 import nallar.leagueskin.util.Throw;
@@ -14,7 +14,7 @@ import java.util.*;
 
 public class FileManager {
 	private final List<FileSource> fileSourceList = new ArrayList<>();
-	private final ArrayListMultimap<String, String> shortNamesToLong = ArrayListMultimap.create();
+	private final HashMultimap<String, String> shortNamesToLong = HashMultimap.create();
 	private final Map<String, FileEntry> entries = Maps.newHashMap();
 	private final FileStatusManager fileStatusManager = new FileStatusManager();
 
@@ -33,7 +33,9 @@ public class FileManager {
 
 		for (FileSource fileSource : fileSourceList) {
 			for (FileEntry entry : fileSource.getEntries()) {
-				shortNamesToLong.put(entry.getFileName().toLowerCase(), entry.getPath());
+				if (!shortNamesToLong.put(entry.getFileName().toLowerCase(), entry.getPath())) {
+					throw new Error("Duplicate file " + entry.getFileName() + " in " + fileSource.toString() + " " + entry.getPath());
+				}
 				entries.put(entry.getPath(), entry);
 			}
 		}
@@ -44,7 +46,7 @@ public class FileManager {
 		LoadingCache<String, ReplacementGeneratorWrapper> replacements = newReplacementsCache();
 		skinPack.getReplacements().forEach(replacement -> {
 			String name = replacement.name;
-			List<String> names = getFullNames(name, replacement.path);
+			Collection<String> names = getFullNames(name, replacement.path);
 			for (String fullName : names) {
 				replacements.getUnchecked(fullName).addGenerator(replacement.generator, replacement.discardsPrevious, replacement.path);
 			}
@@ -67,7 +69,7 @@ public class FileManager {
 		Backups.INSTANCE.finish();
 	}
 
-	public List<String> getFullNames(String shortName, Path realPath) {
+	public Collection<String> getFullNames(String shortName, Path realPath) {
 		int index = shortName.lastIndexOf('.');
 		if (index == -1) {
 			throw new RuntimeException("Should have filetype");
@@ -87,7 +89,7 @@ public class FileManager {
 			match = matchPart.substring(indexDollar + 2, matchPart.lastIndexOf('/'));
 		}
 		// TODO: Refactor to return list of names, have * select all instead of requiring single match
-		List<String> names;
+		Collection<String> names;
 		if (shortName.contains("^")) {
 			names = new ArrayList<>();
 			String extension = shortName.substring(shortName.indexOf('.'));
